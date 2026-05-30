@@ -1,5 +1,14 @@
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+
+// Cliente admin puro — sem cookie/session, usa service role que bypassa RLS
+function adminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,13 +20,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'file e userId são obrigatórios' }, { status: 400 })
     }
 
-    const supabase = await createServiceClient()
+    const supabase = adminClient()
 
     // Cria o bucket se não existir
     const { data: buckets } = await supabase.storage.listBuckets()
     const bucketExists = buckets?.some(b => b.name === 'avatars')
     if (!bucketExists) {
-      await supabase.storage.createBucket('avatars', { public: true, fileSizeLimit: 5242880 })
+      const { error: bucketErr } = await supabase.storage.createBucket('avatars', {
+        public: true,
+        fileSizeLimit: 5242880,
+      })
+      if (bucketErr && !bucketErr.message.includes('already exists')) {
+        return NextResponse.json({ error: bucketErr.message }, { status: 500 })
+      }
     }
 
     const ext = file.name.split('.').pop() ?? 'jpg'
