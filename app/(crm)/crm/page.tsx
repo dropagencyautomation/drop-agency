@@ -1523,156 +1523,157 @@ export default function DropCRM() {
 
               {/* ─ Tab Organograma ─ */}
               {equipeTab==='organograma'&&(()=>{
-                // Formata nome mesmo quando o campo name contém email
                 const fmtName = (n:string) => {
                   if(!n) return 'Usuário'
                   if(!n.includes('@')) return n
-                  return n.split('@')[0].split(/[._\-+]/).map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ')
+                  return n.split('@')[0].split(/[._\-+]/).map((w:string)=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ')
                 }
                 const getProfile = (memberId:string) => userProfiles.find(p=>p.member_id===memberId)
-                const ceoName = fmtName(currentUser?.name??'')
+                const ceoName = fmtName(currentUser?.name??'Administradora')
 
-                // Classifica membros por departamento via keywords no cargo
                 const isComercial = (role:string) => /comercial|vend|closer|sdr|account|prospect/i.test(role)
-                const isAdmin = (role:string) => /admin|financ|rh|recursos|jurídico|contab|secretar/i.test(role)
-                const deptOf = (m:TeamMember) => isComercial(m.role)?'comercial':isAdmin(m.role)?'administrativo':'operacional'
-
+                const isAdmDept  = (role:string) => /financ|rh|recursos|jurídico|contab|secretar|administrativ/i.test(role)
+                const deptOf = (m:TeamMember) => isComercial(m.role)?'comercial':isAdmDept(m.role)?'administrativo':'operacional'
                 const byDept = (dept:string) => members.filter(m=>deptOf(m)===dept)
-                const MAX_CAP = 8 // tarefas por pessoa = 100% capacidade
+                const MAX_CAP = 8
 
                 const hireNeed = (dept:string) => {
                   const mbs = byDept(dept)
                   if(mbs.length===0) return 100
-                  const active = standaloneTasks.filter(t=>mbs.some(m=>t.created_by===m.id||taskAssignees.some(a=>a.task_id===t.id&&a.member_id===m.id))&&t.status!=='done').length
+                  const active = standaloneTasks.filter(t=>
+                    mbs.some(m=>taskAssignees.some(a=>a.task_id===t.id&&a.member_id===m.id))&&t.status!=='done'
+                  ).length
                   return Math.min(100,Math.max(0,Math.round((active/(mbs.length*MAX_CAP))*100)))
                 }
+                const needColor = (p:number) => p>=86?'#EF4444':p>=61?'#F59E0B':p>=31?'#3B82F6':'#10B981'
+                const needLabel = (p:number) => p>=86?'Contratar urgente':p>=61?'Alta demanda':p>=31?'Atenção':'Capacidade OK'
 
-                const needColor = (pct:number) => pct>=86?'#EF4444':pct>=61?'#F59E0B':pct>=31?'#3B82F6':'#10B981'
-                const needLabel = (pct:number) => pct>=86?'Contratar urgente':pct>=61?'Alta demanda':pct>=31?'Atenção':'Capacidade OK'
+                const DEPTS = [
+                  {id:'operacional',   label:'Operacional',    color:'#3B82F6'},
+                  {id:'comercial',     label:'Comercial',      color:'#10B981'},
+                  {id:'administrativo',label:'Administrativo', color:'#F59E0B'},
+                ]
 
-                const cardS:React.CSSProperties = {background:'rgba(10,10,10,0.85)',border:'1px solid rgba(255,255,255,0.09)',borderRadius:12,padding:'16px',backdropFilter:'blur(12px)',display:'flex',flexDirection:'column',alignItems:'center',gap:7,position:'relative',transition:'border-color 0.2s',width:'100%'}
-
-                const MemberCard = (m:TeamMember) => {
-                  const profile = getProfile(m.id)
-                  const access = !!profile
-                  const email = profile?.email ?? m.email ?? ''
-                  return (
-                    <div key={m.id} style={cardS}
-                      onMouseEnter={e=>(e.currentTarget.style.borderColor='rgba(255,255,255,0.2)')}
-                      onMouseLeave={e=>(e.currentTarget.style.borderColor='rgba(255,255,255,0.09)')}>
-                      <div style={{width:44,height:44,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:800,color:'#fff',boxShadow:`0 0 16px ${m.avatar_color}40`}}>
-                        {m.name.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}
-                      </div>
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontSize:12,fontWeight:700,color:'#F9FAFB',marginBottom:1}}>{fmtName(m.name)}</div>
-                        <div style={{fontSize:10,color:'#6B7280'}}>{m.role||'Colaborador'}</div>
-                      </div>
-                      <div style={{display:'flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,background:access?'rgba(16,185,129,0.1)':'rgba(107,114,128,0.1)',border:`1px solid ${access?'rgba(16,185,129,0.3)':'rgba(107,114,128,0.3)'}`}}>
-                        <div style={{width:4,height:4,borderRadius:'50%',background:access?'#10B981':'#4B5563'}}/>
-                        <span style={{fontSize:8,fontWeight:600,color:access?'#10B981':'#4B5563'}}>{access?'Com acesso':'Sem acesso'}</span>
-                      </div>
-                      {currentUser?.role==='admin'&&(
-                        <button onClick={()=>{setOrgAccessModal(m);setOrgAccessForm({email:email,password:'',confirmPassword:''})}}
-                          style={{width:'100%',padding:'5px',borderRadius:6,border:'1px solid rgba(255,255,255,0.07)',background:'rgba(255,255,255,0.02)',color:'#9CA3AF',fontSize:9,cursor:'pointer',fontFamily:'Montserrat,sans-serif',fontWeight:600}}>
-                          {access?'⚙ Gerenciar':'+ Configurar Acesso'}
-                        </button>
-                      )}
-                    </div>
-                  )
-                }
-
-                const EmptySlot = () => (
-                  <div style={{...cardS,border:'1px dashed rgba(255,255,255,0.08)',opacity:0.5}}>
-                    <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(255,255,255,0.04)',border:'2px dashed rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                      <span style={{fontSize:18,color:'#374151'}}>+</span>
-                    </div>
-                    <div style={{textAlign:'center'}}>
-                      <div style={{fontSize:11,fontWeight:600,color:'#4B5563'}}>Vaga em aberto</div>
-                      <div style={{fontSize:9,color:'#374151'}}>A contratar</div>
-                    </div>
-                  </div>
-                )
-
-                const DeptColumn = ({dept,label,color,icon}:{dept:string,label:string,color:string,icon:string}) => {
-                  const mbs = byDept(dept)
-                  const need = hireNeed(dept)
-                  const nc = needColor(need)
-                  const nl = needLabel(need)
-                  const isCamilaResp = dept==='comercial'||dept==='administrativo'
-                  const emptySlots = Math.max(0, (dept==='operacional'?2:1) - mbs.length)
-                  return (
-                    <div style={{flex:1,minWidth:200,background:'rgba(8,8,8,0.6)',border:`1px solid ${color}25`,borderRadius:14,overflow:'hidden'}}>
-                      {/* Header */}
-                      <div style={{padding:'12px 16px',borderBottom:`1px solid ${color}20`,background:`${color}08`,display:'flex',alignItems:'center',gap:8}}>
-                        <span style={{fontSize:16}}>{icon}</span>
-                        <div>
-                          <div style={{fontSize:12,fontWeight:700,color:'#F9FAFB'}}>{label}</div>
-                          <div style={{fontSize:9,color:'#6B7280'}}>{mbs.length} colaborador{mbs.length!==1?'es':''}</div>
-                        </div>
-                      </div>
-                      {/* Necessidade de contratação */}
-                      <div style={{padding:'10px 16px',borderBottom:`1px solid rgba(255,255,255,0.04)`}}>
-                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}}>
-                          <span style={{fontSize:9,fontWeight:600,color:'#6B7280',textTransform:'uppercase',letterSpacing:'0.1em'}}>Necessidade de contratar</span>
-                          <span style={{fontSize:12,fontWeight:800,color:nc}}>{need}%</span>
-                        </div>
-                        <div style={{height:5,background:'rgba(255,255,255,0.06)',borderRadius:999}}>
-                          <div style={{height:'100%',width:`${need}%`,background:nc,borderRadius:999,transition:'width 0.5s'}}/>
-                        </div>
-                        <div style={{fontSize:9,color:nc,marginTop:4,fontWeight:600}}>{nl}</div>
-                      </div>
-                      {/* Responsável (se Camila) */}
-                      {isCamilaResp&&mbs.length===0&&(
-                        <div style={{padding:'8px 16px',borderBottom:'1px solid rgba(255,255,255,0.04)',display:'flex',alignItems:'center',gap:8}}>
-                          <div style={{width:24,height:24,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:'#fff',flexShrink:0}}>
-                            {ceoName.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}
-                          </div>
-                          <div>
-                            <div style={{fontSize:10,fontWeight:600,color:'#F9FAFB'}}>{ceoName}</div>
-                            <div style={{fontSize:9,color:'#E53E3E'}}>Responsável atual</div>
-                          </div>
-                        </div>
-                      )}
-                      {/* Membros + vagas */}
-                      <div style={{padding:12,display:'flex',flexDirection:'column',gap:8}}>
-                        {mbs.map(m=>MemberCard(m))}
-                        {Array.from({length:emptySlots}).map((_,i)=><EmptySlot key={i}/>)}
-                        {mbs.length===0&&emptySlots===0&&<EmptySlot/>}
-                      </div>
-                    </div>
-                  )
-                }
+                const avatarInitials = (name:string) =>
+                  fmtName(name).split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()
 
                 return (
-                  <div style={{paddingTop:16,paddingBottom:8}}>
-                    {/* CEO */}
-                    <div style={{display:'flex',justifyContent:'center',marginBottom:8}}>
-                      <div style={{background:'rgba(10,10,10,0.9)',border:'2px solid rgba(229,62,62,0.4)',borderRadius:14,padding:'20px 28px',backdropFilter:'blur(12px)',display:'flex',flexDirection:'column',alignItems:'center',gap:8,position:'relative',minWidth:200}}>
-                        <div style={{position:'absolute',top:-11,left:'50%',transform:'translateX(-50%)',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',borderRadius:999,padding:'3px 12px',fontSize:9,fontWeight:700,color:'#fff',letterSpacing:'0.12em',whiteSpace:'nowrap'}}>👑 FUNDADORA & CEO</div>
-                        <div style={{width:60,height:60,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:800,color:'#fff',boxShadow:'0 0 24px rgba(229,62,62,0.5)',marginTop:8}}>
+                  <div style={{overflowX:'auto',paddingTop:28,paddingBottom:16,minWidth:560}}>
+
+                    {/* ── CEO ── */}
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
+                      <div style={{background:'rgba(12,12,12,0.95)',border:'1px solid rgba(229,62,62,0.35)',borderRadius:14,padding:'16px 24px',backdropFilter:'blur(16px)',display:'flex',alignItems:'center',gap:14,position:'relative',boxShadow:'0 0 32px rgba(229,62,62,0.12)'}}>
+                        <div style={{position:'absolute',top:-10,right:14,background:'rgba(229,62,62,0.15)',border:'1px solid rgba(229,62,62,0.3)',borderRadius:999,padding:'2px 9px',fontSize:9,fontWeight:700,color:'#E53E3E',letterSpacing:'0.1em'}}>1 colaborador</div>
+                        <div style={{width:46,height:46,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#991B1B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:800,color:'#fff',boxShadow:'0 0 18px rgba(229,62,62,0.45)',flexShrink:0}}>
                           {ceoName.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}
                         </div>
-                        <div style={{textAlign:'center'}}>
-                          <div style={{fontSize:15,fontWeight:800,color:'#F9FAFB',letterSpacing:'-0.02em'}}>{ceoName}</div>
-                          <div style={{fontSize:11,color:'#E53E3E',fontWeight:600,marginTop:2}}>DROP AGENCY</div>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:700,color:'#F9FAFB',marginBottom:1}}>👑 {ceoName}</div>
+                          <div style={{fontSize:11,color:'#E53E3E',fontWeight:600}}>Fundadora & CEO</div>
                         </div>
-                        <div style={{display:'flex',alignItems:'center',gap:5,padding:'3px 10px',borderRadius:999,background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)'}}>
-                          <div style={{width:5,height:5,borderRadius:'50%',background:'#10B981'}}/>
-                          <span style={{fontSize:9,fontWeight:600,color:'#10B981'}}>Com acesso</span>
-                        </div>
+                      </div>
+
+                      {/* linha vertical CEO → horizontal */}
+                      <div style={{width:2,height:32,background:'rgba(255,255,255,0.1)'}}/>
+
+                      {/* linha horizontal atravessando os 3 depts */}
+                      <div style={{width:'80%',height:2,background:'rgba(255,255,255,0.1)',position:'relative'}}>
+                        {DEPTS.map((_,i)=>(
+                          <div key={i} style={{position:'absolute',top:0,left:`${(i*50)}%`,width:2,height:28,background:'rgba(255,255,255,0.1)',transform:'translateX(-50%)'}}/>
+                        ))}
                       </div>
                     </div>
 
-                    {/* Conector */}
-                    <div style={{display:'flex',justifyContent:'center',marginBottom:8}}>
-                      <div style={{width:2,height:24,background:'rgba(229,62,62,0.3)'}}/>
-                    </div>
+                    {/* ── DEPARTAMENTOS ── */}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginTop:28,width:'80%',margin:'28px auto 0'}}>
+                      {DEPTS.map(dept=>{
+                        const mbs = byDept(dept.id)
+                        const need = hireNeed(dept.id)
+                        const nc = needColor(need)
+                        const nl = needLabel(need)
+                        const isCamilaResp = dept.id==='comercial'||dept.id==='administrativo'
+                        const total = mbs.length + (isCamilaResp&&mbs.length===0?1:0)
 
-                    {/* Departamentos */}
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16}}>
-                      <DeptColumn dept="operacional"    label="Operacional"    color="#3B82F6" icon="⚙️"/>
-                      <DeptColumn dept="comercial"      label="Comercial"      color="#10B981" icon="📈"/>
-                      <DeptColumn dept="administrativo" label="Administrativo" color="#F59E0B" icon="🗂️"/>
+                        return (
+                          <div key={dept.id} style={{background:'rgba(12,12,12,0.9)',border:`1px solid ${dept.color}22`,borderRadius:14,backdropFilter:'blur(12px)',overflow:'hidden',display:'flex',flexDirection:'column'}}>
+                            {/* header */}
+                            <div style={{padding:'12px 16px',borderBottom:`1px solid rgba(255,255,255,0.05)`,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                              <div style={{fontSize:13,fontWeight:700,color:'#F9FAFB'}}>{dept.label}</div>
+                              <div style={{background:`${dept.color}18`,border:`1px solid ${dept.color}35`,borderRadius:999,padding:'2px 8px',fontSize:9,fontWeight:700,color:dept.color}}>{total} colaborador{total!==1?'es':''}</div>
+                            </div>
+
+                            {/* necessidade de contratar */}
+                            <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                                <span style={{fontSize:9,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.1em',fontWeight:600}}>Necessidade de contratar</span>
+                                <span style={{fontSize:11,fontWeight:800,color:nc}}>{need}%</span>
+                              </div>
+                              <div style={{height:4,background:'rgba(255,255,255,0.06)',borderRadius:999}}>
+                                <div style={{height:'100%',width:`${need}%`,background:nc,borderRadius:999}}/>
+                              </div>
+                              <div style={{fontSize:9,color:nc,marginTop:3,fontWeight:600}}>{nl}</div>
+                            </div>
+
+                            {/* membros */}
+                            <div style={{padding:12,display:'flex',flexDirection:'column',gap:8,flex:1}}>
+                              {/* Camila como responsável se dept vazio */}
+                              {isCamilaResp&&mbs.length===0&&(
+                                <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'rgba(229,62,62,0.05)',border:'1px solid rgba(229,62,62,0.15)',borderRadius:10}}>
+                                  <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#991B1B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:'#fff',flexShrink:0}}>
+                                    {ceoName.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}
+                                  </div>
+                                  <div style={{flex:1}}>
+                                    <div style={{fontSize:12,fontWeight:600,color:'#F9FAFB'}}>{ceoName}</div>
+                                    <div style={{fontSize:10,color:'#E53E3E'}}>Responsável atual</div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* colaboradores do dept */}
+                              {mbs.map(m=>{
+                                const profile = getProfile(m.id)
+                                const access = !!profile
+                                const email = profile?.email ?? m.email ?? ''
+                                return (
+                                  <div key={m.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:10,transition:'border-color 0.15s',cursor:'default'}}
+                                    onMouseEnter={e=>(e.currentTarget.style.borderColor='rgba(255,255,255,0.14)')}
+                                    onMouseLeave={e=>(e.currentTarget.style.borderColor='rgba(255,255,255,0.06)')}>
+                                    <div style={{width:36,height:36,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:'#fff',flexShrink:0,boxShadow:`0 0 12px ${m.avatar_color}35`}}>
+                                      {avatarInitials(m.name)}
+                                    </div>
+                                    <div style={{flex:1,minWidth:0}}>
+                                      <div style={{fontSize:12,fontWeight:600,color:'#F9FAFB',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{fmtName(m.name)}</div>
+                                      <div style={{fontSize:10,color:'#6B7280'}}>{m.role||'Colaborador'}</div>
+                                    </div>
+                                    <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4,flexShrink:0}}>
+                                      <div style={{width:7,height:7,borderRadius:'50%',background:access?'#10B981':'#4B5563'}} title={access?'Com acesso':'Sem acesso'}/>
+                                      {currentUser?.role==='admin'&&(
+                                        <button onClick={()=>{setOrgAccessModal(m);setOrgAccessForm({email,password:'',confirmPassword:''})}}
+                                          style={{padding:'2px 6px',borderRadius:4,border:'1px solid rgba(255,255,255,0.08)',background:'transparent',color:'#6B7280',fontSize:8,cursor:'pointer',fontFamily:'Montserrat,sans-serif',fontWeight:600,whiteSpace:'nowrap'}}>
+                                          {access?'⚙':'+ acesso'}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+
+                              {/* vaga em aberto */}
+                              {mbs.length===0&&!isCamilaResp&&(
+                                <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',border:'1px dashed rgba(255,255,255,0.08)',borderRadius:10,opacity:0.5}}>
+                                  <div style={{width:36,height:36,borderRadius:'50%',border:'2px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                                    <span style={{color:'#374151',fontSize:16}}>+</span>
+                                  </div>
+                                  <div>
+                                    <div style={{fontSize:12,color:'#4B5563',fontWeight:600}}>Vaga em aberto</div>
+                                    <div style={{fontSize:9,color:'#374151'}}>A contratar</div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )
