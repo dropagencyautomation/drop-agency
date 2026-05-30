@@ -201,7 +201,10 @@ export default function DropCRM() {
   const [projectMembers,setProjectMembers] = useState<ProjectMember[]>([])
   const [tasks,setTasks] = useState<ProjectTask[]>([])
   const [campaigns,setCampaigns] = useState<Campaign[]>([])
-  const [equipeTab,setEquipeTab] = useState<'membros'|'produtividade'|'xp'>('membros')
+  const [equipeTab,setEquipeTab] = useState<'membros'|'produtividade'|'xp'|'organograma'>('membros')
+  const [orgAccessModal,setOrgAccessModal] = useState<TeamMember|null>(null)
+  const [orgAccessForm,setOrgAccessForm] = useState({email:'',password:'',confirmPassword:''})
+  const [orgAccessSaving,setOrgAccessSaving] = useState(false)
   const [selectedProject,setSelectedProject] = useState<Project|null>(null)
   const [addProjectModal,setAddProjectModal] = useState(false)
   const [addTaskModal,setAddTaskModal] = useState<{projectId:string}|null>(null)
@@ -1422,7 +1425,7 @@ export default function DropCRM() {
 
               {/* Tabs */}
               <div style={{display:'flex',gap:4,marginBottom:24,borderBottom:'1px solid rgba(255,255,255,0.06)',paddingBottom:0}}>
-                {(['membros','produtividade','xp'] as const).map((t)=>{const l={membros:'Membros',produtividade:'Produtividade',xp:'XP & Ranking'}[t]; return (
+                {(['membros','produtividade','xp','organograma'] as const).map((t)=>{const l={membros:'Membros',produtividade:'Produtividade',xp:'XP & Ranking',organograma:'Organograma'}[t]; return (
                   <button key={t} onClick={()=>setEquipeTab(t)} style={{padding:'8px 16px',borderRadius:'8px 8px 0 0',border:'none',fontSize:12,fontWeight:equipeTab===t?600:400,cursor:'pointer',background:equipeTab===t?'rgba(229,62,62,0.12)':'transparent',color:equipeTab===t?'#F9FAFB':'#6B7280',borderBottom:equipeTab===t?'2px solid #E53E3E':'2px solid transparent'}}>{l}</button>
                 )})}
               </div>
@@ -1517,6 +1520,133 @@ export default function DropCRM() {
                   {members.length===0&&<div style={{textAlign:'center',padding:60,color:'#4B5563'}}><div style={{fontSize:40,marginBottom:12}}>📈</div><div style={{fontSize:14,fontWeight:600,color:'#6B7280'}}>Adicione membros para ver produtividade</div></div>}
                 </div>
               )}
+
+              {/* ─ Tab Organograma ─ */}
+              {equipeTab==='organograma'&&(()=>{
+                const getProfile = (memberId:string) => userProfiles.find(p=>p.member_id===memberId)
+                const hasAccess = (memberId:string) => !!getProfile(memberId)
+                const ceoNodes = members.filter(m=>getProfile(m.id)?.role==='admin')
+                const gestorNodes = members.filter(m=>getProfile(m.id)?.role==='gestor')
+                const colab = members.filter(m=>{ const p=getProfile(m.id); return !p||p.role==='colaborador' })
+                // Se currentUser admin não está em members, mostrar ele como CEO virtual
+                const currentUserInMembers = currentUser ? members.some(m=>getProfile(m.id)?.id===currentUser.id) : false
+                const showCurrentUserCeo = currentUser?.role==='admin'&&!currentUserInMembers
+
+                const cardStyle:React.CSSProperties = {background:'rgba(10,10,10,0.85)',border:'1px solid rgba(255,255,255,0.09)',borderRadius:14,padding:'18px 20px',backdropFilter:'blur(12px)',width:210,flexShrink:0,display:'flex',flexDirection:'column',alignItems:'center',gap:8,position:'relative',transition:'border-color 0.2s'}
+                const levelLabel = (label:string, color:string) => (
+                  <div style={{display:'flex',alignItems:'center',gap:10,width:'100%',maxWidth:700,marginBottom:4}}>
+                    <div style={{height:1,flex:1,background:`${color}30`}}/>
+                    <span style={{fontSize:10,fontWeight:700,color,letterSpacing:'0.12em',textTransform:'uppercase'}}>{label}</span>
+                    <div style={{height:1,flex:1,background:`${color}30`}}/>
+                  </div>
+                )
+                const connector = () => <div style={{width:2,height:28,background:'rgba(229,62,62,0.3)',margin:'0 auto'}}/>
+
+                const OrgCard = (m:TeamMember, isCeo=false) => {
+                  const profile = getProfile(m.id)
+                  const access = !!profile
+                  const email = profile?.email ?? m.email ?? ''
+                  return (
+                    <div key={m.id} style={{...cardStyle, border:`1px solid ${isCeo?'rgba(229,62,62,0.35)':'rgba(255,255,255,0.09)'}`}}
+                      onMouseEnter={e=>(e.currentTarget.style.borderColor=isCeo?'rgba(229,62,62,0.6)':'rgba(255,255,255,0.18)')}
+                      onMouseLeave={e=>(e.currentTarget.style.borderColor=isCeo?'rgba(229,62,62,0.35)':'rgba(255,255,255,0.09)')}>
+                      {isCeo&&<div style={{position:'absolute',top:-10,left:'50%',transform:'translateX(-50%)',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',borderRadius:999,padding:'2px 10px',fontSize:9,fontWeight:700,color:'#fff',letterSpacing:'0.1em'}}>CEO</div>}
+                      <div style={{width:52,height:52,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:800,color:'#fff',boxShadow:`0 0 20px ${m.avatar_color}50`,marginTop:isCeo?8:0}}>
+                        {m.name.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontSize:13,fontWeight:700,color:'#F9FAFB',marginBottom:2}}>{m.name}</div>
+                        <div style={{fontSize:11,color:'#6B7280'}}>{m.role}</div>
+                      </div>
+                      {email&&<div style={{fontSize:10,color:'#4B5563',wordBreak:'break-all',textAlign:'center'}}>{email}</div>}
+                      <div style={{display:'flex',alignItems:'center',gap:5,padding:'3px 10px',borderRadius:999,background:access?'rgba(16,185,129,0.1)':'rgba(107,114,128,0.1)',border:`1px solid ${access?'rgba(16,185,129,0.3)':'rgba(107,114,128,0.3)'}`}}>
+                        <div style={{width:5,height:5,borderRadius:'50%',background:access?'#10B981':'#4B5563'}}/>
+                        <span style={{fontSize:9,fontWeight:600,color:access?'#10B981':'#4B5563'}}>{access?'Com acesso':'Sem acesso'}</span>
+                      </div>
+                      {currentUser?.role==='admin'&&(
+                        <button onClick={()=>{setOrgAccessModal(m);setOrgAccessForm({email:email,password:'',confirmPassword:''})}}
+                          style={{width:'100%',padding:'6px',borderRadius:7,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.03)',color:'#9CA3AF',fontSize:10,cursor:'pointer',fontFamily:'Montserrat,sans-serif',fontWeight:600}}>
+                          {access?'⚙ Gerenciar Acesso':'+ Configurar Acesso'}
+                        </button>
+                      )}
+                    </div>
+                  )
+                }
+
+                // CEO virtual (currentUser admin sem member_id na tabela)
+                const CeoVirtual = () => {
+                  if(!currentUser) return null
+                  return (
+                    <div style={{...cardStyle, border:'1px solid rgba(229,62,62,0.35)',position:'relative'}}
+                      onMouseEnter={e=>(e.currentTarget.style.borderColor='rgba(229,62,62,0.6)')}
+                      onMouseLeave={e=>(e.currentTarget.style.borderColor='rgba(229,62,62,0.35)')}>
+                      <div style={{position:'absolute',top:-10,left:'50%',transform:'translateX(-50%)',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',borderRadius:999,padding:'2px 10px',fontSize:9,fontWeight:700,color:'#fff',letterSpacing:'0.1em'}}>CEO</div>
+                      <div style={{width:52,height:52,borderRadius:'50%',background:'#E53E3E',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:800,color:'#fff',boxShadow:'0 0 20px #E53E3E50',marginTop:8}}>
+                        {currentUser.name.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}
+                      </div>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontSize:13,fontWeight:700,color:'#F9FAFB',marginBottom:2}}>{currentUser.name}</div>
+                        <div style={{fontSize:11,color:'#6B7280'}}>Administradora</div>
+                      </div>
+                      {currentUser.email&&<div style={{fontSize:10,color:'#4B5563',wordBreak:'break-all',textAlign:'center'}}>{currentUser.email}</div>}
+                      <div style={{display:'flex',alignItems:'center',gap:5,padding:'3px 10px',borderRadius:999,background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)'}}>
+                        <div style={{width:5,height:5,borderRadius:'50%',background:'#10B981'}}/>
+                        <span style={{fontSize:9,fontWeight:600,color:'#10B981'}}>Com acesso</span>
+                      </div>
+                    </div>
+                  )
+                }
+
+                const totalMembers = members.length + (showCurrentUserCeo?1:0)
+                return (
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:0,paddingTop:20,paddingBottom:8}}>
+                    {totalMembers===0&&(
+                      <div style={{textAlign:'center',padding:60,color:'#4B5563'}}>
+                        <div style={{fontSize:40,marginBottom:12}}>🏢</div>
+                        <div style={{fontSize:14,fontWeight:600,color:'#6B7280'}}>Nenhum membro cadastrado</div>
+                        <div style={{fontSize:12,color:'#374151',marginTop:6}}>Adicione membros para montar o organograma</div>
+                      </div>
+                    )}
+
+                    {/* CEO */}
+                    {(ceoNodes.length>0||showCurrentUserCeo)&&(
+                      <>
+                        {levelLabel('Direção','#E53E3E')}
+                        <div style={{display:'flex',gap:20,justifyContent:'center',marginTop:12,marginBottom:0}}>
+                          {showCurrentUserCeo&&<CeoVirtual/>}
+                          {ceoNodes.map(m=>OrgCard(m,true))}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Connector CEO → Gestores/Colaboradores */}
+                    {(ceoNodes.length>0||showCurrentUserCeo)&&(gestorNodes.length>0||colab.length>0)&&connector()}
+
+                    {/* Gestores */}
+                    {gestorNodes.length>0&&(
+                      <>
+                        {levelLabel('Gestão','#F59E0B')}
+                        <div style={{display:'flex',gap:16,flexWrap:'wrap',justifyContent:'center',marginTop:12,marginBottom:0}}>
+                          {gestorNodes.map(m=>OrgCard(m,false))}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Connector Gestores → Colaboradores */}
+                    {gestorNodes.length>0&&colab.length>0&&connector()}
+
+                    {/* Colaboradores */}
+                    {colab.length>0&&(
+                      <>
+                        {levelLabel('Operacional','#3B82F6')}
+                        <div style={{display:'flex',gap:16,flexWrap:'wrap',justifyContent:'center',marginTop:12}}>
+                          {colab.map(m=>OrgCard(m,false))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* ─ Tab XP & Ranking ─ */}
               {equipeTab==='xp'&&(
@@ -2263,6 +2393,95 @@ export default function DropCRM() {
           </div>
         </div>
       )}
+
+      {/* ── MODAL CONFIGURAR ACESSO (ORGANOGRAMA) ── */}
+      {orgAccessModal&&(()=>{
+        const member = orgAccessModal
+        const existingProfile = userProfiles.find(p=>p.member_id===member.id)
+        const isUpdate = !!existingProfile
+        const inpStyle:React.CSSProperties = {padding:'9px 12px',background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,color:'#F9FAFB',fontSize:13,outline:'none',width:'100%',fontFamily:'Montserrat,sans-serif'}
+
+        async function saveAccess() {
+          if(!orgAccessForm.email.trim()||!orgAccessForm.password.trim()) return
+          if(orgAccessForm.password!==orgAccessForm.confirmPassword){setToast('As senhas não coincidem.');return}
+          if(orgAccessForm.password.length<8){setToast('Senha deve ter pelo menos 8 caracteres.');return}
+          setOrgAccessSaving(true)
+          try {
+            const res = await fetch('/api/admin/create-user',{
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({
+                name:member.name,
+                email:orgAccessForm.email,
+                password:orgAccessForm.password,
+                role:'colaborador',
+                member_id:member.id,
+                permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}
+              })
+            })
+            const data = await res.json()
+            if(data.success){
+              setToast(`Acesso criado para ${member.name}!`)
+              setOrgAccessModal(null)
+              await fetchAll()
+            } else {
+              setToast(data.error??'Erro ao criar acesso.')
+            }
+          } finally { setOrgAccessSaving(false) }
+        }
+
+        return (
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',backdropFilter:'blur(4px)',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setOrgAccessModal(null)}>
+            <div style={{background:'#111',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,width:'100%',maxWidth:400,fontFamily:'Montserrat,sans-serif'}} onClick={e=>e.stopPropagation()}>
+              <div style={{padding:'16px 20px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:15,fontWeight:700,color:'#F9FAFB'}}>{isUpdate?'Gerenciar Acesso':'Configurar Acesso'}</div>
+                  <div style={{fontSize:11,color:'#6B7280',marginTop:2}}>{member.name} · {member.role}</div>
+                </div>
+                <button onClick={()=>setOrgAccessModal(null)} style={{background:'none',border:'none',color:'#6B7280',cursor:'pointer',fontSize:18}}>×</button>
+              </div>
+              <div style={{padding:20,display:'flex',flexDirection:'column',gap:14}}>
+
+                {isUpdate?(
+                  <>
+                    <div style={{background:'rgba(16,185,129,0.08)',border:'1px solid rgba(16,185,129,0.2)',borderRadius:10,padding:'12px 14px',display:'flex',gap:10,alignItems:'flex-start'}}>
+                      <span style={{fontSize:16}}>✓</span>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600,color:'#10B981',marginBottom:2}}>Este colaborador já tem acesso</div>
+                        <div style={{fontSize:11,color:'#4B5563'}}>Email: <span style={{color:'#9CA3AF'}}>{existingProfile.email}</span></div>
+                        <div style={{fontSize:11,color:'#4B5563',marginTop:2}}>Para alterar a senha, use o painel de Administração.</div>
+                      </div>
+                    </div>
+                    <button onClick={()=>setOrgAccessModal(null)} style={{padding:'10px',borderRadius:8,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#9CA3AF',fontSize:13,cursor:'pointer',fontFamily:'Montserrat,sans-serif'}}>Fechar</button>
+                  </>
+                ):(
+                  <>
+                    <div style={{background:'rgba(229,62,62,0.06)',border:'1px solid rgba(229,62,62,0.15)',borderRadius:10,padding:'10px 14px',fontSize:11,color:'#9CA3AF'}}>
+                      Defina o email e senha para que <strong style={{color:'#F9FAFB'}}>{member.name}</strong> possa entrar no sistema.
+                    </div>
+                    <div>
+                      <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:5}}>Email de acesso</label>
+                      <input type="email" value={orgAccessForm.email} onChange={e=>setOrgAccessForm(p=>({...p,email:e.target.value}))} placeholder="colaborador@dropagency.com" style={inpStyle}/>
+                    </div>
+                    <div>
+                      <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:5}}>Senha (mín. 8 caracteres)</label>
+                      <input type="password" value={orgAccessForm.password} onChange={e=>setOrgAccessForm(p=>({...p,password:e.target.value}))} placeholder="••••••••" style={inpStyle}/>
+                    </div>
+                    <div>
+                      <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:5}}>Confirmar senha</label>
+                      <input type="password" value={orgAccessForm.confirmPassword} onChange={e=>setOrgAccessForm(p=>({...p,confirmPassword:e.target.value}))} placeholder="••••••••" style={inpStyle}/>
+                    </div>
+                    <button onClick={saveAccess} disabled={orgAccessSaving||!orgAccessForm.email.trim()||!orgAccessForm.password.trim()}
+                      style={{padding:'11px',borderRadius:10,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',opacity:orgAccessSaving||!orgAccessForm.email.trim()||!orgAccessForm.password.trim()?0.5:1,fontFamily:'Montserrat,sans-serif'}}>
+                      {orgAccessSaving?'Criando acesso...':'Criar Acesso'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── MODAL NOVA TAREFA STANDALONE ── */}
       {addTaskStandaloneModal&&(
