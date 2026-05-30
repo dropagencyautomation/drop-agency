@@ -679,7 +679,7 @@ export default function DropCRM() {
         </div>
 
         <nav style={{flex:1,padding:'12px 10px',overflowY:'auto'}}>
-          <div style={{fontSize:9,fontWeight:600,color:'#374151',textTransform:'uppercase',letterSpacing:'0.15em',padding:'4px 14px 8px',color:'#9CA3AF'}}>VISÃO GERAL</div>
+          <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'4px 14px 8px'}}>VISÃO GERAL</div>
           {NAV.slice(0,1).map(n=>(
             <div key={n.id} style={navStyle(n.id)} onClick={()=>setPanel(n.id)}>
               <span style={{color:panel===n.id?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS[n.id]}</span>{n.label}
