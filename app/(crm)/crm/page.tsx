@@ -214,7 +214,7 @@ export default function DropCRM() {
   const [newProject,setNewProject] = useState({name:'',client_name:'',description:'',budget:'',start_date:'',end_date:'',color:'#E53E3E'})
   const [newTask,setNewTask] = useState({title:'',description:'',assigned_to:'',priority:'medium',due_date:''})
   const [newCampaign,setNewCampaign] = useState({client_name:'',campaign_name:'',platform:'meta_ads',budget:'',spend:'',impressions:'',clicks:'',leads_gen:'',conversions:'',revenue:'',period_start:'',period_end:''})
-  const [newMember,setNewMember] = useState({name:'',email:'',role:'',avatar_color:'#E53E3E'})
+  const [newMember,setNewMember] = useState({name:'',email:'',role:'',avatar_color:'#E53E3E',createLogin:false,password:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})
   // Tarefas standalone
   const [standaloneTasks,setStandaloneTasks] = useState<Task[]>([])
   const [taskAssignees,setTaskAssignees] = useState<TaskAssignee[]>([])
@@ -435,13 +435,19 @@ export default function DropCRM() {
 
   async function createMember() {
     if(!newMember.name.trim()||!newMember.role.trim()) return
-    const {data} = await sb.from('team_members').insert(newMember).select().single()
+    if(newMember.createLogin&&newMember.password.length<8){ setToast('Senha deve ter pelo menos 8 caracteres.'); return }
+    if(newMember.createLogin&&!newMember.email.trim()){ setToast('Informe o email de acesso.'); return }
+    const {data} = await sb.from('team_members').insert({name:newMember.name,email:newMember.email,role:newMember.role,avatar_color:newMember.avatar_color}).select().single()
     if(data){
       setMembers(prev=>[...prev,data])
       await sb.from('member_xp').insert({member_id:data.id,total_xp:0,level:1,tasks_done:0})
       await sb.from('member_badges').insert({member_id:data.id,badge_id:1})
+      if(newMember.createLogin&&newMember.email.trim()&&newMember.password){
+        await fetch('/api/admin/create-user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newMember.name,email:newMember.email,password:newMember.password,role:'colaborador',member_id:data.id,permissions:newMember.permissions})})
+      }
       setAddMemberModal(false)
-      setNewMember({name:'',email:'',role:'',avatar_color:'#E53E3E'})
+      setNewMember({name:'',email:'',role:'',avatar_color:'#E53E3E',createLogin:false,password:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})
+      setToast('Membro adicionado!')
       await fetchAll()
     }
   }
@@ -1442,8 +1448,18 @@ export default function DropCRM() {
                     const mb2=memberBadges.filter(b=>b.member_id===m.id)
                     const memberTasks=tasks.filter(t=>t.assigned_to===m.id)
                     const done=memberTasks.filter(t=>t.status==='done').length
+                    const mProfile=userProfiles.find(p=>p.member_id===m.id)
+                    const mEmail=mProfile?.email??m.email??''
                     return (
-                      <div key={m.id} style={{background:'rgba(10,10,10,0.75)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,padding:20,backdropFilter:'blur(12px)'}}>
+                      <div key={m.id}
+                        onClick={()=>{
+                          if(!currentUser||currentUser.role!=='admin') return
+                          if(mProfile){ setEditPermUser({...mProfile}); setEditPermModal(true) }
+                          else { setOrgAccessModal(m); setOrgAccessForm({email:mEmail,password:'',confirmPassword:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}}) }
+                        }}
+                        style={{background:'rgba(10,10,10,0.75)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,padding:20,backdropFilter:'blur(12px)',cursor:currentUser?.role==='admin'?'pointer':'default',transition:'border-color 0.15s'}}
+                        onMouseEnter={e=>{ if(currentUser?.role==='admin') e.currentTarget.style.borderColor='rgba(229,62,62,0.3)' }}
+                        onMouseLeave={e=>{ e.currentTarget.style.borderColor='rgba(255,255,255,0.07)' }}>
                         <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
                           <div style={{width:44,height:44,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:700,color:'#fff',flexShrink:0,boxShadow:`0 0 16px ${m.avatar_color}40`}}>{m.name.split(' ').map((w:string)=>w[0]).join('').slice(0,2).toUpperCase()}</div>
                           <div style={{flex:1}}>
@@ -1453,6 +1469,7 @@ export default function DropCRM() {
                           <div style={{textAlign:'right'}}>
                             <div style={{fontSize:11,fontWeight:700,color:'#E53E3E'}}>Nível {lvl}</div>
                             <div style={{fontSize:10,color:'#4B5563'}}>{xp?.total_xp??0} XP</div>
+                            {currentUser?.role==='admin'&&<div style={{fontSize:8,color:mProfile?'#10B981':'#4B5563',fontWeight:600,marginTop:2}}>{mProfile?'⚙ permissões':'+ acesso'}</div>}
                           </div>
                         </div>
                         <div style={{marginBottom:10}}>
@@ -2405,18 +2422,20 @@ export default function DropCRM() {
       {/* ── MODAL NOVO MEMBRO ── */}
       {addMemberModal&&(
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',backdropFilter:'blur(4px)',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setAddMemberModal(false)}>
-          <div style={{background:'#111',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,width:'100%',maxWidth:380,fontFamily:'Montserrat,sans-serif'}} onClick={e=>e.stopPropagation()}>
-            <div style={{padding:'16px 20px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style={{background:'#111',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,width:'100%',maxWidth:420,maxHeight:'90vh',overflowY:'auto',fontFamily:'Montserrat,sans-serif'}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:'#111',zIndex:1}}>
               <div style={{fontSize:15,fontWeight:700,color:'#F9FAFB'}}>Novo Membro</div>
               <button onClick={()=>setAddMemberModal(false)} style={{background:'none',border:'none',color:'#6B7280',cursor:'pointer',fontSize:18}}>×</button>
             </div>
             <div style={{padding:20,display:'flex',flexDirection:'column',gap:12}}>
-              {[{l:'Nome *',k:'name',ph:'Fulano de Tal'},{l:'Email',k:'email',ph:'fulano@dropagency.com'},{l:'Cargo *',k:'role',ph:'Designer, Copywriter...'}].map(({l,k,ph})=>(
+              {/* Nome e Cargo */}
+              {[{l:'Nome *',k:'name',ph:'Fulano de Tal'},{l:'Cargo *',k:'role',ph:'Designer, Copywriter...'}].map(({l,k,ph})=>(
                 <div key={k}>
                   <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:5}}>{l}</label>
-                  <input value={(newMember as Record<string,string>)[k]} onChange={e=>setNewMember(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={{padding:'9px 12px',background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,color:'#F9FAFB',fontSize:13,outline:'none',width:'100%',fontFamily:'Montserrat,sans-serif'}}/>
+                  <input value={(newMember as unknown as Record<string,string>)[k]} onChange={e=>setNewMember(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={{padding:'9px 12px',background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,color:'#F9FAFB',fontSize:13,outline:'none',width:'100%',fontFamily:'Montserrat,sans-serif'}}/>
                 </div>
               ))}
+              {/* Cor */}
               <div>
                 <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Cor do avatar</label>
                 <div style={{display:'flex',gap:8}}>
@@ -2425,7 +2444,54 @@ export default function DropCRM() {
                   ))}
                 </div>
               </div>
-              <button onClick={createMember} disabled={!newMember.name.trim()||!newMember.role.trim()} style={{padding:'11px',borderRadius:10,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',opacity:!newMember.name.trim()||!newMember.role.trim()?0.4:1}}>Adicionar Membro</button>
+
+              {/* Toggle criar acesso */}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',background:'rgba(255,255,255,0.02)',borderRadius:10,border:'1px solid rgba(255,255,255,0.07)',marginTop:4}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600,color:'#F9FAFB'}}>Criar acesso de login</div>
+                  <div style={{fontSize:10,color:'#6B7280',marginTop:1}}>Permite que o colaborador entre no sistema</div>
+                </div>
+                <div onClick={()=>setNewMember(p=>({...p,createLogin:!p.createLogin}))}
+                  style={{width:40,height:22,borderRadius:999,background:newMember.createLogin?'#E53E3E':'rgba(255,255,255,0.1)',cursor:'pointer',position:'relative',transition:'background 0.2s',flexShrink:0}}>
+                  <div style={{position:'absolute',top:3,left:newMember.createLogin?20:3,width:16,height:16,borderRadius:'50%',background:'#fff',transition:'left 0.2s'}}/>
+                </div>
+              </div>
+
+              {/* Campos de acesso (só quando toggle ligado) */}
+              {newMember.createLogin&&(
+                <>
+                  <div>
+                    <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:5}}>Email de acesso *</label>
+                    <input type="email" value={newMember.email} onChange={e=>setNewMember(p=>({...p,email:e.target.value}))} placeholder="colaborador@dropagency.com" style={{padding:'9px 12px',background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,color:'#F9FAFB',fontSize:13,outline:'none',width:'100%',fontFamily:'Montserrat,sans-serif'}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:5}}>Senha (mín. 8 caracteres) *</label>
+                    <input type="password" value={newMember.password} onChange={e=>setNewMember(p=>({...p,password:e.target.value}))} placeholder="••••••••" style={{padding:'9px 12px',background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,color:'#F9FAFB',fontSize:13,outline:'none',width:'100%',fontFamily:'Montserrat,sans-serif'}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Módulos liberados</label>
+                    <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                      {ALL_MODULES.map(mod=>{
+                        const on = newMember.permissions[mod as keyof typeof newMember.permissions]
+                        return (
+                          <label key={mod} onClick={()=>setNewMember(p=>({...p,permissions:{...p.permissions,[mod]:!on}}))}
+                            style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'7px 10px',background:on?'rgba(229,62,62,0.06)':'rgba(255,255,255,0.02)',borderRadius:7,border:`1px solid ${on?'rgba(229,62,62,0.2)':'rgba(255,255,255,0.05)'}`,transition:'all 0.15s'}}>
+                            <div style={{width:16,height:16,borderRadius:3,background:on?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${on?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                              {on&&<svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
+                            </div>
+                            <span style={{fontSize:11,color:on?'#F9FAFB':'#9CA3AF',fontWeight:on?600:400}}>{MODULE_LABELS[mod]}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <button onClick={createMember} disabled={!newMember.name.trim()||!newMember.role.trim()}
+                style={{padding:'11px',borderRadius:10,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',opacity:!newMember.name.trim()||!newMember.role.trim()?0.4:1,fontFamily:'Montserrat,sans-serif',marginTop:4}}>
+                {newMember.createLogin?'Adicionar Membro + Criar Acesso':'Adicionar Membro'}
+              </button>
             </div>
           </div>
         </div>
