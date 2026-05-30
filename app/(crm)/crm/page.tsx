@@ -603,14 +603,14 @@ export default function DropCRM() {
     if(!user) return
     setUploadingAvatar(true)
     try {
-      const ext = file.name.split('.').pop()
-      const path = `${user.id}/avatar.${ext}`
-      const {error:upErr} = await sb.storage.from('avatars').upload(path,file,{upsert:true})
-      if(upErr) { setToast('Erro ao fazer upload da foto.'); return }
-      const {data:{publicUrl}} = sb.storage.from('avatars').getPublicUrl(path)
-      await sb.from('user_profiles').update({avatar_url:publicUrl}).eq('id',user.id)
-      setCurrentUser(prev=>prev?{...prev,avatar_url:publicUrl}:prev)
-      setUserProfiles(prev=>prev.map(p=>p.id===user.id?{...p,avatar_url:publicUrl}:p))
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('userId', user.id)
+      const res = await fetch('/api/upload-avatar', { method:'POST', body:fd })
+      const data = await res.json()
+      if(!res.ok) { setToast(`Erro: ${data.error??'Falha no upload.'}`); return }
+      setCurrentUser(prev=>prev?{...prev,avatar_url:data.publicUrl}:prev)
+      setUserProfiles(prev=>prev.map(p=>p.id===user.id?{...p,avatar_url:data.publicUrl}:p))
       setToast('Foto atualizada!')
     } finally { setUploadingAvatar(false) }
   }
