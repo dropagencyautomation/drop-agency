@@ -3,14 +3,17 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-const admin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-)
+function getAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
 export async function POST(req: NextRequest) {
   try {
+    const admin = getAdmin()
     const { name, email, password, role, member_id, permissions } = await req.json()
     if (!email || !password || !name) return NextResponse.json({ error: 'Campos obrigatórios ausentes' }, { status: 400 })
 
@@ -35,6 +38,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const admin = getAdmin()
     const { id, role, permissions, is_active } = await req.json()
     const update: Record<string, unknown> = {}
     if (role !== undefined) update.role = role
