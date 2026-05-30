@@ -1,7 +1,6 @@
 import OpenAI from 'openai'
 import type { AiConversation, QualificationData } from '@/types/database'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4.1'
 
 const SYSTEM_PROMPT = `Você é a assistente da DROP AGENCY, uma agência estratégica de marketing, posicionamento e crescimento digital.
@@ -38,10 +37,16 @@ FLUXO DE QUALIFICAÇÃO:
 
 Na dúvida sobre qualquer pergunta fora do seu escopo, direcione para atendimento humano.`
 
+function getOpenAI() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+}
+
 export async function processMessage(
   conversation: AiConversation,
   userMessage: string
 ): Promise<{ reply: string; updatedQualification: QualificationData; shouldHandoff: boolean }> {
+  const openai = getOpenAI()
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: SYSTEM_PROMPT },
     ...conversation.conversation_history.map((m) => ({
@@ -60,7 +65,6 @@ export async function processMessage(
 
   const reply = completion.choices[0].message.content ?? ''
 
-  // Detecta se a IA quer passar para humano
   const shouldHandoff =
     conversation.current_step === 'routing' ||
     reply.toLowerCase().includes('[handoff]') ||
