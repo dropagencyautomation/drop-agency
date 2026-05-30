@@ -1281,9 +1281,9 @@ export default function DropCRM() {
 
               {/* Tabs */}
               <div style={{display:'flex',gap:4,marginBottom:24,borderBottom:'1px solid rgba(255,255,255,0.06)',paddingBottom:0}}>
-                {([['membros','Membros'],['produtividade','Produtividade'],['xp','XP & Ranking']]).map(([t,l])=>(
+                {(['membros','produtividade','xp'] as const).map((t)=>{const l={membros:'Membros',produtividade:'Produtividade',xp:'XP & Ranking'}[t]; return (
                   <button key={t} onClick={()=>setEquipeTab(t)} style={{padding:'8px 16px',borderRadius:'8px 8px 0 0',border:'none',fontSize:12,fontWeight:equipeTab===t?600:400,cursor:'pointer',background:equipeTab===t?'rgba(229,62,62,0.12)':'transparent',color:equipeTab===t?'#F9FAFB':'#6B7280',borderBottom:equipeTab===t?'2px solid #E53E3E':'2px solid transparent'}}>{l}</button>
-                ))}
+                )})}
               </div>
 
               {/* ─ Tab Membros ─ */}
@@ -1453,9 +1453,9 @@ export default function DropCRM() {
                     </div>
                     {/* View toggle */}
                     <div style={{display:'flex',gap:4,background:'rgba(10,10,10,0.6)',borderRadius:8,padding:3,border:'1px solid rgba(255,255,255,0.07)'}}>
-                      {([['dashboard','⊞'],['kanban','▦'],['lista','≡']]).map(([v,ic])=>(
+                      {(['dashboard','kanban','lista'] as const).map((v)=>{const ic={dashboard:'⊞',kanban:'▦',lista:'≡'}[v]; return (
                         <button key={v} onClick={()=>setTaskView(v)} style={{padding:'4px 10px',borderRadius:6,border:'none',fontSize:12,cursor:'pointer',background:taskView===v?'rgba(229,62,62,0.2)':'transparent',color:taskView===v?'#E53E3E':'#6B7280'}}>{ic}</button>
-                      ))}
+                      )})}
                     </div>
                     <button onClick={()=>setAddTaskStandaloneModal(true)} style={{padding:'8px 16px',borderRadius:8,border:'none',fontSize:12,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)'}}>+ Nova Tarefa</button>
                   </div>
@@ -1673,9 +1673,9 @@ export default function DropCRM() {
 
               {/* Tabs */}
               <div style={{display:'flex',gap:4,marginBottom:24,borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-                {([['usuarios','👤 Usuários'],['permissoes','🔐 Permissões'],['auditoria','📋 Auditoria']]).map(([t,l])=>(
-                  <button key={t} onClick={()=>setAdminTab(t as typeof adminTab)} style={{padding:'8px 18px',borderRadius:'8px 8px 0 0',border:'none',fontSize:12,fontWeight:adminTab===t?600:400,cursor:'pointer',background:adminTab===t?'rgba(229,62,62,0.12)':'transparent',color:adminTab===t?'#F9FAFB':'#6B7280',borderBottom:adminTab===t?'2px solid #E53E3E':'2px solid transparent'}}>{l}</button>
-                ))}
+                {(['usuarios','permissoes','auditoria'] as const).map((t)=>{const l={usuarios:'👤 Usuários',permissoes:'🔐 Permissões',auditoria:'📋 Auditoria'}[t]; return (
+                  <button key={t} onClick={()=>setAdminTab(t)} style={{padding:'8px 18px',borderRadius:'8px 8px 0 0',border:'none',fontSize:12,fontWeight:adminTab===t?600:400,cursor:'pointer',background:adminTab===t?'rgba(229,62,62,0.12)':'transparent',color:adminTab===t?'#F9FAFB':'#6B7280',borderBottom:adminTab===t?'2px solid #E53E3E':'2px solid transparent'}}>{l}</button>
+                )})}
               </div>
 
               {/* Usuários */}
@@ -2196,7 +2196,7 @@ export default function DropCRM() {
               {[{l:'Nome completo *',k:'name',ph:'Fulano de Tal',t:'text'},{l:'E-mail *',k:'email',ph:'fulano@dropagency.com',t:'email'},{l:'Senha *',k:'password',ph:'Mínimo 8 caracteres',t:'password'}].map(({l,k,ph,t})=>(
                 <div key={k}>
                   <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:5}}>{l}</label>
-                  <input type={t} value={(newUser as Record<string,string>)[k]} onChange={e=>setNewUser(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={{padding:'9px 12px',background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,color:'#F9FAFB',fontSize:13,outline:'none',width:'100%',fontFamily:'Montserrat,sans-serif'}}/>
+                  <input type={t} value={(newUser as unknown as Record<string,string>)[k]} onChange={e=>setNewUser(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={{padding:'9px 12px',background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,color:'#F9FAFB',fontSize:13,outline:'none',width:'100%',fontFamily:'Montserrat,sans-serif'}}/>
                 </div>
               ))}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
