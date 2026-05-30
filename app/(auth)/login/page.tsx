@@ -87,8 +87,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div style={{ textAlign:'center', marginBottom:28 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="DROP Agency" style={{ width:160, height:'auto', display:'block', margin:'0 auto 10px', filter:'drop-shadow(0 0 32px rgba(229,62,62,0.6))'}}/>
-          <div style={{ fontSize:24, fontWeight:800, color:'#F9FAFB', letterSpacing:'-0.02em' }}>DROP AGENCY</div>
+          <img src="/logo.png" alt="DROP Agency" style={{ width:200, height:'auto', display:'block', margin:'0 auto 6px', borderRadius:16, boxShadow:'0 0 40px rgba(229,62,62,0.35)'}}/>
           <div style={{ fontSize:13, color:'#6B7280', marginTop:4 }}>
             {mode==='login' ? 'Acesse o painel de controle' : 'Crie sua conta de colaborador'}
           </div>
