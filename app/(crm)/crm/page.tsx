@@ -203,7 +203,8 @@ export default function DropCRM() {
   const [campaigns,setCampaigns] = useState<Campaign[]>([])
   const [equipeTab,setEquipeTab] = useState<'membros'|'produtividade'|'xp'|'organograma'>('membros')
   const [orgAccessModal,setOrgAccessModal] = useState<TeamMember|null>(null)
-  const [orgAccessForm,setOrgAccessForm] = useState({email:'',password:'',confirmPassword:''})
+  const DEFAULT_PERMS = {dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}
+  const [orgAccessForm,setOrgAccessForm] = useState({email:'',password:'',confirmPassword:'',permissions:{...{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}}})
   const [orgAccessSaving,setOrgAccessSaving] = useState(false)
   const [selectedProject,setSelectedProject] = useState<Project|null>(null)
   const [addProjectModal,setAddProjectModal] = useState(false)
@@ -228,6 +229,7 @@ export default function DropCRM() {
   const [adminTab,setAdminTab] = useState<'usuarios'|'permissoes'|'auditoria'>('usuarios')
   const [createUserModal,setCreateUserModal] = useState(false)
   const [editPermUser,setEditPermUser] = useState<UserProfile|null>(null)
+  const [editPermModal,setEditPermModal] = useState(false)
   const [newUser,setNewUser] = useState({name:'',email:'',password:'',role:'colaborador',member_id:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})
   const [savingUser,setSavingUser] = useState(false)
   // Notificações + Perfil
@@ -1634,10 +1636,13 @@ export default function DropCRM() {
                                 const profile = getProfile(m.id)
                                 const access = !!profile
                                 const email = profile?.email ?? m.email ?? ''
+                                const canEditPerm = currentUser?.role==='admin' && !!profile
                                 return (
-                                  <div key={m.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:10,transition:'border-color 0.15s',cursor:'default'}}
-                                    onMouseEnter={e=>(e.currentTarget.style.borderColor='rgba(255,255,255,0.14)')}
-                                    onMouseLeave={e=>(e.currentTarget.style.borderColor='rgba(255,255,255,0.06)')}>
+                                  <div key={m.id}
+                                    onClick={()=>{ if(canEditPerm){ setEditPermUser({...profile!}); setEditPermModal(true) } }}
+                                    style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:10,transition:'all 0.15s',cursor:canEditPerm?'pointer':'default'}}
+                                    onMouseEnter={e=>{e.currentTarget.style.borderColor=canEditPerm?'rgba(229,62,62,0.3)':'rgba(255,255,255,0.14)';if(canEditPerm)e.currentTarget.style.background='rgba(229,62,62,0.04)'}}
+                                    onMouseLeave={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,0.06)';e.currentTarget.style.background='rgba(255,255,255,0.02)'}}>
                                     <div style={{width:36,height:36,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:'#fff',flexShrink:0,boxShadow:`0 0 12px ${m.avatar_color}35`}}>
                                       {avatarInitials(m.name)}
                                     </div>
@@ -1647,12 +1652,13 @@ export default function DropCRM() {
                                     </div>
                                     <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4,flexShrink:0}}>
                                       <div style={{width:7,height:7,borderRadius:'50%',background:access?'#10B981':'#4B5563'}} title={access?'Com acesso':'Sem acesso'}/>
-                                      {currentUser?.role==='admin'&&(
-                                        <button onClick={()=>{setOrgAccessModal(m);setOrgAccessForm({email,password:'',confirmPassword:''})}}
+                                      {currentUser?.role==='admin'&&!access&&(
+                                        <button onClick={e=>{e.stopPropagation();setOrgAccessModal(m);setOrgAccessForm({email,password:'',confirmPassword:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})}}
                                           style={{padding:'2px 6px',borderRadius:4,border:'1px solid rgba(255,255,255,0.08)',background:'transparent',color:'#6B7280',fontSize:8,cursor:'pointer',fontFamily:'Montserrat,sans-serif',fontWeight:600,whiteSpace:'nowrap'}}>
-                                          {access?'⚙':'+ acesso'}
+                                          + acesso
                                         </button>
                                       )}
+                                      {canEditPerm&&<span style={{fontSize:8,color:'#E53E3E',fontWeight:600}}>⚙ editar</span>}
                                     </div>
                                   </div>
                                 )
@@ -2425,6 +2431,68 @@ export default function DropCRM() {
         </div>
       )}
 
+      {/* ── MODAL EDITAR PERMISSÕES (ORGANOGRAMA) ── */}
+      {editPermModal&&editPermUser&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',backdropFilter:'blur(4px)',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setEditPermModal(false)}>
+          <div style={{background:'#111',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,width:'100%',maxWidth:420,maxHeight:'88vh',overflowY:'auto',fontFamily:'Montserrat,sans-serif'}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:'#111',zIndex:1}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:'#F9FAFB'}}>Permissões</div>
+                <div style={{fontSize:11,color:'#6B7280',marginTop:1}}>{editPermUser.name} · {editPermUser.email}</div>
+              </div>
+              <button onClick={()=>setEditPermModal(false)} style={{background:'none',border:'none',color:'#6B7280',cursor:'pointer',fontSize:18}}>×</button>
+            </div>
+            <div style={{padding:20,display:'flex',flexDirection:'column',gap:16}}>
+              {/* Nível de acesso */}
+              <div>
+                <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Nível de acesso</label>
+                <div style={{display:'flex',gap:8}}>
+                  {(['admin','gestor','colaborador']).map(r=>(
+                    <button key={r} onClick={()=>setEditPermUser(p=>p?{...p,role:r}:p)}
+                      style={{flex:1,padding:'8px',borderRadius:8,border:'1px solid',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'Montserrat,sans-serif',
+                        background:editPermUser.role===r?'rgba(229,62,62,0.15)':'transparent',
+                        color:editPermUser.role===r?'#E53E3E':'#6B7280',
+                        borderColor:editPermUser.role===r?'rgba(229,62,62,0.4)':'rgba(255,255,255,0.08)'}}>
+                      {r.charAt(0).toUpperCase()+r.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Status */}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',background:'rgba(255,255,255,0.02)',borderRadius:8,border:'1px solid rgba(255,255,255,0.06)'}}>
+                <span style={{fontSize:12,color:'#D1D5DB',fontWeight:600}}>Conta ativa</span>
+                <div onClick={()=>setEditPermUser(p=>p?{...p,is_active:!p.is_active}:p)}
+                  style={{width:40,height:22,borderRadius:999,background:editPermUser.is_active?'#E53E3E':'rgba(255,255,255,0.1)',cursor:'pointer',position:'relative',transition:'background 0.2s'}}>
+                  <div style={{position:'absolute',top:3,left:editPermUser.is_active?20:3,width:16,height:16,borderRadius:'50%',background:'#fff',transition:'left 0.2s'}}/>
+                </div>
+              </div>
+              {/* Módulos */}
+              <div>
+                <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:10}}>Módulos liberados</label>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {ALL_MODULES.map(mod=>{
+                    const on = editPermUser.permissions?.[mod]
+                    return (
+                      <label key={mod} onClick={()=>setEditPermUser(p=>p?{...p,permissions:{...p.permissions,[mod]:!on}}:p)}
+                        style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',padding:'9px 12px',background:on?'rgba(229,62,62,0.06)':'rgba(255,255,255,0.02)',borderRadius:8,border:`1px solid ${on?'rgba(229,62,62,0.2)':'rgba(255,255,255,0.05)'}`,transition:'all 0.15s'}}>
+                        <div style={{width:18,height:18,borderRadius:4,background:on?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${on?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                          {on&&<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
+                        </div>
+                        <span style={{fontSize:12,color:on?'#F9FAFB':'#9CA3AF',fontWeight:on?600:400}}>{MODULE_LABELS[mod]}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+              <button onClick={()=>savePermissions(editPermUser)}
+                style={{padding:'12px',borderRadius:10,border:'none',fontSize:13,fontWeight:700,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',fontFamily:'Montserrat,sans-serif'}}>
+                Salvar Permissões
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── MODAL CONFIGURAR ACESSO (ORGANOGRAMA) ── */}
       {orgAccessModal&&(()=>{
         const member = orgAccessModal
@@ -2447,7 +2515,7 @@ export default function DropCRM() {
                 password:orgAccessForm.password,
                 role:'colaborador',
                 member_id:member.id,
-                permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}
+                permissions:orgAccessForm.permissions
               })
             })
             const data = await res.json()
@@ -2501,6 +2569,23 @@ export default function DropCRM() {
                     <div>
                       <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:5}}>Confirmar senha</label>
                       <input type="password" value={orgAccessForm.confirmPassword} onChange={e=>setOrgAccessForm(p=>({...p,confirmPassword:e.target.value}))} placeholder="••••••••" style={inpStyle}/>
+                    </div>
+                    <div>
+                      <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Módulos liberados</label>
+                      <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                        {ALL_MODULES.map(mod=>{
+                          const on = orgAccessForm.permissions[mod as keyof typeof orgAccessForm.permissions]
+                          return (
+                            <label key={mod} onClick={()=>setOrgAccessForm(p=>({...p,permissions:{...p.permissions,[mod]:!on}}))}
+                              style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'7px 10px',background:on?'rgba(229,62,62,0.06)':'rgba(255,255,255,0.02)',borderRadius:7,border:`1px solid ${on?'rgba(229,62,62,0.2)':'rgba(255,255,255,0.05)'}`,transition:'all 0.15s'}}>
+                              <div style={{width:16,height:16,borderRadius:3,background:on?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${on?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                                {on&&<svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
+                              </div>
+                              <span style={{fontSize:11,color:on?'#F9FAFB':'#9CA3AF',fontWeight:on?600:400}}>{MODULE_LABELS[mod]}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
                     </div>
                     <button onClick={saveAccess} disabled={orgAccessSaving||!orgAccessForm.email.trim()||!orgAccessForm.password.trim()}
                       style={{padding:'11px',borderRadius:10,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',opacity:orgAccessSaving||!orgAccessForm.email.trim()||!orgAccessForm.password.trim()?0.5:1,fontFamily:'Montserrat,sans-serif'}}>
