@@ -230,6 +230,7 @@ export default function DropCRM() {
   const [createUserModal,setCreateUserModal] = useState(false)
   const [editPermUser,setEditPermUser] = useState<UserProfile|null>(null)
   const [editPermModal,setEditPermModal] = useState(false)
+  const [confirmRemoveMember,setConfirmRemoveMember] = useState(false)
   const [newUser,setNewUser] = useState({name:'',email:'',password:'',role:'colaborador',member_id:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})
   const [savingUser,setSavingUser] = useState(false)
   // Notificações + Perfil
@@ -411,6 +412,14 @@ export default function DropCRM() {
         await fetchAll()
       } else setToast(`Erro: ${data.error}`)
     } finally { setSavingUser(false) }
+  }
+
+  async function removeMember(memberId:string) {
+    await sb.from('team_members').delete().eq('id', memberId)
+    setMembers(prev=>prev.filter(m=>m.id!==memberId))
+    setEditPermModal(false)
+    setEditPermUser(null)
+    setToast('Membro removido.')
   }
 
   async function savePermissions(profile:UserProfile) {
@@ -2510,14 +2519,14 @@ export default function DropCRM() {
 
       {/* ── MODAL EDITAR PERMISSÕES (ORGANOGRAMA) ── */}
       {editPermModal&&editPermUser&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',backdropFilter:'blur(4px)',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setEditPermModal(false)}>
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',backdropFilter:'blur(4px)',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>{setEditPermModal(false);setConfirmRemoveMember(false)}}>
           <div style={{background:'#111',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,width:'100%',maxWidth:420,maxHeight:'88vh',overflowY:'auto',fontFamily:'Montserrat,sans-serif'}} onClick={e=>e.stopPropagation()}>
             <div style={{padding:'16px 20px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:'#111',zIndex:1}}>
               <div>
                 <div style={{fontSize:15,fontWeight:700,color:'#F9FAFB'}}>Permissões</div>
                 <div style={{fontSize:11,color:'#6B7280',marginTop:1}}>{editPermUser.name} · {editPermUser.email}</div>
               </div>
-              <button onClick={()=>setEditPermModal(false)} style={{background:'none',border:'none',color:'#6B7280',cursor:'pointer',fontSize:18}}>×</button>
+              <button onClick={()=>{setEditPermModal(false);setConfirmRemoveMember(false)}} style={{background:'none',border:'none',color:'#6B7280',cursor:'pointer',fontSize:18}}>×</button>
             </div>
             <div style={{padding:20,display:'flex',flexDirection:'column',gap:16}}>
               {/* Nível de acesso */}
@@ -2565,6 +2574,30 @@ export default function DropCRM() {
                 style={{padding:'12px',borderRadius:10,border:'none',fontSize:13,fontWeight:700,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',fontFamily:'Montserrat,sans-serif'}}>
                 Salvar Permissões
               </button>
+
+              {/* Remover membro */}
+              {editPermUser.member_id&&(
+                !confirmRemoveMember?(
+                  <button onClick={()=>setConfirmRemoveMember(true)}
+                    style={{padding:'10px',borderRadius:10,border:'1px solid rgba(239,68,68,0.3)',background:'transparent',color:'#EF4444',fontSize:12,cursor:'pointer',fontFamily:'Montserrat,sans-serif',fontWeight:600}}>
+                    🗑 Remover membro da equipe
+                  </button>
+                ):(
+                  <div style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:10,padding:'12px 14px'}}>
+                    <div style={{fontSize:12,color:'#FCA5A5',fontWeight:600,marginBottom:10}}>Tem certeza? Esta ação não pode ser desfeita.</div>
+                    <div style={{display:'flex',gap:8}}>
+                      <button onClick={()=>removeMember(editPermUser.member_id!)}
+                        style={{flex:1,padding:'8px',borderRadius:8,border:'none',background:'#EF4444',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'Montserrat,sans-serif'}}>
+                        Confirmar remoção
+                      </button>
+                      <button onClick={()=>setConfirmRemoveMember(false)}
+                        style={{flex:1,padding:'8px',borderRadius:8,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#9CA3AF',fontSize:12,cursor:'pointer',fontFamily:'Montserrat,sans-serif'}}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
             </div>
           </div>
         </div>
