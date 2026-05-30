@@ -64,7 +64,7 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--sidebar-border)' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="DROP AGENCY" style={{ width: 172, height: 'auto', display: 'block', filter: 'drop-shadow(0 0 12px rgba(229,62,62,0.4))' }} />
+          <img src="/logo.png" alt="DROP AGENCY" style={{ width: 150, height: 'auto', display: 'block', filter: 'drop-shadow(0 0 12px rgba(229,62,62,0.4))' }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
