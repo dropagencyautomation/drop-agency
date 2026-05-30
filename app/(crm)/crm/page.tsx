@@ -752,16 +752,10 @@ export default function DropCRM() {
 
       {/* SIDEBAR */}
       <aside style={{width:220,background:'rgba(5,5,5,0.88)',borderRight:'1px solid rgba(255,255,255,0.07)',display:'flex',flexDirection:'column',flexShrink:0,backdropFilter:'blur(20px)',position:'relative',zIndex:2}}>
-        <div style={{padding:'20px 16px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div style={{width:38,height:38,borderRadius:9,overflow:'hidden',flexShrink:0,border:'1px solid rgba(255,255,255,0.1)',boxShadow:'0 0 18px rgba(229,62,62,0.35)',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center'}}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.png" alt="DROP AGENCY" style={{width:'100%',height:'100%',objectFit:'contain',padding:2}}/>
-            </div>
-            <div>
-              <div style={{fontSize:13,fontWeight:700,color:'#F9FAFB',letterSpacing:'-0.01em'}}>DROP Agency</div>
-              <div style={{fontSize:10,color:'#4B5563',letterSpacing:'0.04em'}}>CRM Platform</div>
-            </div>
+        <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'center'}}>
+          <div style={{background:'#fff',borderRadius:10,padding:'6px 10px',boxShadow:'0 0 20px rgba(229,62,62,0.3)',width:168}}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="DROP AGENCY" style={{width:'100%',height:'auto',display:'block'}}/>
           </div>
         </div>
 

@@ -61,18 +61,14 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
       style={{ width: 220, background: 'var(--sidebar)', borderRight: '1px solid var(--sidebar-border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}
     >
       {/* Logo */}
-      <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--sidebar-border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 8, overflow: 'hidden', flexShrink: 0, background: '#fff', boxShadow: 'var(--shadow-glow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--sidebar-border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+          <div style={{ background: '#fff', borderRadius: 10, padding: '6px 10px', boxShadow: '0 0 20px rgba(229,62,62,0.3)', width: 168 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="DROP AGENCY" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 2 }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--foreground)', letterSpacing: '-0.02em' }}>DROP AGENCY</div>
-            <div style={{ fontSize: 10, color: 'var(--muted-foreground)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>CRM</div>
+            <img src="/logo.png" alt="DROP AGENCY" style={{ width: '100%', height: 'auto', display: 'block' }} />
           </div>
         </div>
-        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
           <span style={{ fontSize: 10, color: 'var(--muted-foreground)' }}>Sistema operacional</span>
         </div>
