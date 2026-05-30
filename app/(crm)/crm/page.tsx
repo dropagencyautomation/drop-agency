@@ -82,7 +82,6 @@ const MODULE_LABELS: Record<string,string> = { dashboard:'Dashboard',crm:'CRM',c
 const PERM_GROUPS = [
   { label:'Módulos', perms:[
     {key:'dashboard',label:'Dashboard'},
-    {key:'crm',label:'CRM / Leads'},
     {key:'clientes',label:'Clientes'},
     {key:'projetos',label:'Projetos'},
     {key:'marketing',label:'Marketing'},
@@ -90,6 +89,16 @@ const PERM_GROUPS = [
     {key:'financeiro',label:'Financeiro'},
     {key:'integracoes',label:'Integrações'},
     {key:'configuracoes',label:'Configurações'},
+  ]},
+  { label:'CRM / Leads', perms:[
+    {key:'crm_aquisicao', label:'Ver funil Aquisição'},
+    {key:'crm_vendas',    label:'Ver funil Vendas'},
+    {key:'crm_operacao',  label:'Ver funil Operação'},
+    {key:'crm_followup',  label:'Ver Follow-up'},
+    {key:'crm_move_lead', label:'Mover lead no Kanban'},
+    {key:'crm_create_lead',label:'Criar lead'},
+    {key:'crm_edit_lead', label:'Editar lead'},
+    {key:'crm_delete_lead',label:'Excluir / arquivar lead'},
   ]},
   { label:'Tarefas', perms:[
     {key:'tasks_view_own',label:'Ver tarefas próprias'},
@@ -120,9 +129,12 @@ const PERM_GROUPS = [
 ]
 
 const DEFAULT_COLLAB_PERMS = {
-  dashboard:true, crm:true, clientes:true,
+  dashboard:true, clientes:true,
   projetos:false, marketing:false, equipe:false,
   financeiro:false, integracoes:false, configuracoes:false,
+  // CRM / Leads
+  crm_aquisicao:true, crm_vendas:false, crm_operacao:false, crm_followup:false,
+  crm_move_lead:false, crm_create_lead:false, crm_edit_lead:false, crm_delete_lead:false,
   tasks_view_own:true, tasks_view_all:false,
   tasks_create:false, tasks_edit:false, tasks_delete:false,
   tasks_move:true, tasks_complete:true,
@@ -762,7 +774,7 @@ export default function DropCRM() {
   // Mapa painel → chave de permissão
   const PANEL_PERM: Record<string,string> = {
     dashboard:'dashboard',
-    aquisicao:'crm', vendas:'crm', operacao:'crm', followup:'crm',
+    aquisicao:'crm_aquisicao', vendas:'crm_vendas', operacao:'crm_operacao', followup:'crm_followup',
     tarefas:'tarefas', projetos:'projetos', marketing:'marketing',
     equipe:'equipe', financeiro:'financeiro',
     integracoes:'integracoes', configuracoes:'configuracoes',
@@ -772,16 +784,15 @@ export default function DropCRM() {
     if(currentUser.role==='admin') return true
     if(currentUser.role==='gestor') return true
     const perms = (currentUser.permissions ?? {}) as Record<string,boolean>
-    // Chave direta (granular ou de módulo)
     if(key in perms) return !!perms[key]
-    // Painel → módulo legado
     const panelKey = PANEL_PERM[key]
     if(panelKey && panelKey in perms) return !!perms[panelKey]
-    // Fallback: chaves granulares novas em perfis antigos com permissão de módulo legado
+    // Fallbacks legado (perfis antigos com chave genérica 'crm')
     const LEGACY: Record<string,string> = {
       tasks_view_own:'tarefas', tasks_move:'tarefas', tasks_complete:'tarefas', tasks_comment:'tarefas',
-      clients_view_own:'clientes',
-      team_view:'equipe',
+      clients_view_own:'clientes', team_view:'equipe',
+      crm_aquisicao:'crm', crm_vendas:'crm', crm_operacao:'crm', crm_followup:'crm',
+      crm_move_lead:'crm', crm_create_lead:'crm', crm_edit_lead:'crm',
     }
     if(LEGACY[key] && perms[LEGACY[key]]) return true
     return false
@@ -831,9 +842,9 @@ export default function DropCRM() {
             return (
               <div key={stage.id}
                 style={{width:240,flexShrink:0,display:'flex',flexDirection:'column',gap:8,background:isOver?'rgba(229,62,62,0.05)':'rgba(10,10,10,0.65)',border:`1px solid ${isOver?'rgba(229,62,62,0.3)':'rgba(255,255,255,0.06)'}`,borderRadius:12,padding:12,minHeight:'calc(100vh - 220px)',transition:'all 0.15s',backdropFilter:'blur(10px)'}}
-                onDragOver={e=>{e.preventDefault();setDragOver(stage.id)}}
+                onDragOver={e=>{if(hasPerm('crm_move_lead')){e.preventDefault();setDragOver(stage.id)}}}
                 onDragLeave={()=>setDragOver(null)}
-                onDrop={e=>{e.preventDefault();const id=e.dataTransfer.getData('leadId');if(id)moveLead(id,stage.id);setDragOver(null)}}
+                onDrop={e=>{e.preventDefault();if(!hasPerm('crm_move_lead'))return;const id=e.dataTransfer.getData('leadId');if(id)moveLead(id,stage.id);setDragOver(null)}}
               >
                 <div style={{display:'flex',alignItems:'center',gap:7,paddingBottom:10,borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
                   <span style={{width:7,height:7,borderRadius:'50%',background:stage.color,boxShadow:`0 0 6px ${stage.color}`,flexShrink:0}}/>
@@ -845,10 +856,10 @@ export default function DropCRM() {
                   {colLeads.map(lead=>{
                     const isHot=(lead.score??0)>=70
                     return (
-                      <div key={lead.id} draggable
-                        onDragStart={e=>{e.dataTransfer.setData('leadId',lead.id)}}
+                      <div key={lead.id} draggable={hasPerm('crm_move_lead')}
+                        onDragStart={e=>{if(hasPerm('crm_move_lead'))e.dataTransfer.setData('leadId',lead.id)}}
                         onDragEnd={()=>setDragOver(null)}
-                        style={{background:'rgba(8,8,8,0.8)',border:`1px solid ${isHot?'rgba(229,62,62,0.25)':'rgba(255,255,255,0.05)'}`,borderRadius:10,padding:'11px 12px',cursor:'grab',boxShadow:isHot?'0 0 12px rgba(229,62,62,0.1)':'none',backdropFilter:'blur(8px)'}}
+                        style={{background:'rgba(8,8,8,0.8)',border:`1px solid ${isHot?'rgba(229,62,62,0.25)':'rgba(255,255,255,0.05)'}`,borderRadius:10,padding:'11px 12px',cursor:hasPerm('crm_move_lead')?'grab':'default',boxShadow:isHot?'0 0 12px rgba(229,62,62,0.1)':'none',backdropFilter:'blur(8px)'}}
                       >
                         <div style={{display:'flex',justifyContent:'space-between',gap:4,marginBottom:2}}>
                           <p style={{fontSize:12,fontWeight:600,color:'#F9FAFB',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,margin:0,cursor:'pointer'}} onClick={()=>setDetailLead(lead)}>{lead.name}</p>
@@ -906,23 +917,43 @@ export default function DropCRM() {
             </div>
           </>}
 
-          {hasPerm('crm')&&<>
+          {(hasPerm('crm_aquisicao')||hasPerm('crm_vendas')||hasPerm('crm_operacao')||hasPerm('crm_followup'))&&(
             <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'12px 14px 8px'}}>JORNADA DO LEAD</div>
-            {NAV.slice(1,4).map(n=>(
-              <div key={n.id} style={navStyle(n.id)} onClick={()=>setPanel(n.id)}>
-                <span style={{color:panel===n.id?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS[n.id]}</span>
-                {n.label}
-                <span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(255,255,255,0.06)',color:'#6B7280',padding:'1px 6px',borderRadius:99}}>
-                  {leads.filter(l=>stages.find(s=>s.id===l.stage_id)?.kanban===n.id).length}
-                </span>
-              </div>
-            ))}
+          )}
+          {hasPerm('crm_aquisicao')&&(
+            <div style={navStyle('aquisicao')} onClick={()=>setPanel('aquisicao')}>
+              <span style={{color:panel==='aquisicao'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['aquisicao']}</span>
+              Aquisição
+              <span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(255,255,255,0.06)',color:'#6B7280',padding:'1px 6px',borderRadius:99}}>
+                {leads.filter(l=>stages.find(s=>s.id===l.stage_id)?.kanban==='aquisicao').length}
+              </span>
+            </div>
+          )}
+          {hasPerm('crm_vendas')&&(
+            <div style={navStyle('vendas')} onClick={()=>setPanel('vendas')}>
+              <span style={{color:panel==='vendas'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['vendas']}</span>
+              Vendas
+              <span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(255,255,255,0.06)',color:'#6B7280',padding:'1px 6px',borderRadius:99}}>
+                {leads.filter(l=>stages.find(s=>s.id===l.stage_id)?.kanban==='vendas').length}
+              </span>
+            </div>
+          )}
+          {hasPerm('crm_operacao')&&(
+            <div style={navStyle('operacao')} onClick={()=>setPanel('operacao')}>
+              <span style={{color:panel==='operacao'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['operacao']}</span>
+              Operação
+              <span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(255,255,255,0.06)',color:'#6B7280',padding:'1px 6px',borderRadius:99}}>
+                {leads.filter(l=>stages.find(s=>s.id===l.stage_id)?.kanban==='operacao').length}
+              </span>
+            </div>
+          )}
+          {hasPerm('crm_followup')&&(
             <div style={navStyle('followup')} onClick={()=>setPanel('followup')}>
               <span style={{color:panel==='followup'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['followup']}</span>
               Follow-up
               {pendingFu>0&&<span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(245,158,11,0.15)',color:'#F59E0B',padding:'1px 6px',borderRadius:99}}>{pendingFu}</span>}
             </div>
-          </>}
+          )}
 
           {[
             {id:'tarefas',perm:'tarefas'},{id:'projetos',perm:'projetos'},
