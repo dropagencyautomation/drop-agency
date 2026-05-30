@@ -12,3 +12,4 @@ dist/
 Thumbs.db
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+.env.local.bak

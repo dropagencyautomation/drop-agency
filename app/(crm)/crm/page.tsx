@@ -22,8 +22,9 @@ interface ProjectTask { id:string; project_id:string; assigned_to:string|null; t
 interface Campaign { id:string; project_id:string|null; client_name:string; platform:string; campaign_name:string; status:string; budget:number; spend:number; impressions:number; clicks:number; leads_gen:number; conversions:number; revenue:number; period_start:string|null; period_end:string|null }
 interface Task { id:string; title:string; description:string|null; lead_id:string|null; project_id:string|null; created_by:string|null; status:string; priority:string; start_date:string|null; due_date:string|null; completed_at:string|null; xp_reward:number; notes:string|null; created_at:string; updated_at:string }
 interface TaskAssignee { task_id:string; member_id:string }
-interface UserProfile { id:string; name:string; email:string|null; role:string; member_id:string|null; permissions:Record<string,boolean>; is_active:boolean; last_login_at:string|null; created_at:string }
+interface UserProfile { id:string; name:string; email:string|null; role:string; member_id:string|null; permissions:Record<string,boolean>; is_active:boolean; last_login_at:string|null; avatar_url:string|null; created_at:string }
 interface AuditEntry { id:string; user_id:string|null; user_name:string|null; action:string; resource:string; resource_id:string|null; details:Record<string,unknown>; created_at:string }
+interface Notif { id:string; recipient_id:string; actor_name:string|null; title:string; message:string; type:string; resource:string|null; resource_id:string|null; read:boolean; created_at:string }
 
 const fmtDate = (d:string) => new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
 const fmtDateShort = (d:string) => new Date(d).toLocaleDateString('pt-BR')
@@ -226,6 +227,14 @@ export default function DropCRM() {
   const [editPermUser,setEditPermUser] = useState<UserProfile|null>(null)
   const [newUser,setNewUser] = useState({name:'',email:'',password:'',role:'colaborador',member_id:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})
   const [savingUser,setSavingUser] = useState(false)
+  // Notificações + Perfil
+  const [notifs,setNotifs] = useState<Notif[]>([])
+  const [notifOpen,setNotifOpen] = useState(false)
+  const [profileMenuOpen,setProfileMenuOpen] = useState(false)
+  const [profileModal,setProfileModal] = useState(false)
+  const [uploadingAvatar,setUploadingAvatar] = useState(false)
+  const [editName,setEditName] = useState('')
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   async function fetchAll() {
     const [s,l,f,i,a,mb,mx,bg,mbg,pr,pm,tk,cp] = await Promise.all([
@@ -266,6 +275,12 @@ export default function DropCRM() {
     if(ta.data) setTaskAssignees(ta.data)
     if(up.data) setUserProfiles(up.data)
     if(al.data) setAuditLogs(al.data)
+    // Notificações do usuário atual
+    const {data:{user}} = await sb.auth.getUser()
+    if(user) {
+      const {data:nf} = await sb.from('notifications').select('*').eq('recipient_id',user.id).order('created_at',{ascending:false}).limit(30)
+      if(nf) setNotifs(nf)
+    }
   }
 
   async function completeTask(task: ProjectTask) {
@@ -363,6 +378,7 @@ export default function DropCRM() {
     }
     await sb.from('tasks').update({completed_at:new Date().toISOString()}).eq('id',task.id)
     setStandaloneTasks(prev=>prev.map(t=>t.id===task.id?{...t,status:'done',completed_at:new Date().toISOString()}:t))
+    await sendNotif(`Tarefa concluída: ${task.title}`,`${currentUser?.name??'Colaborador'} concluiu "${task.title}"`, 'task','tasks',task.id)
     await fetchAll()
   }
 
@@ -431,6 +447,12 @@ export default function DropCRM() {
     const ch = sb.channel('drop-crm')
       .on('postgres_changes',{event:'*',schema:'public',table:'leads'},()=>fetchAll())
       .on('postgres_changes',{event:'*',schema:'public',table:'interactions'},()=>fetchAll())
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications'},async(payload)=>{
+        const {data:{user}} = await sb.auth.getUser()
+        if(payload.new&&(payload.new as Notif).recipient_id===user?.id){
+          setNotifs(prev=>[payload.new as Notif,...prev])
+        }
+      })
       .subscribe()
     return ()=>{ clearInterval(t); sb.removeChannel(ch) }
   },[])
@@ -485,6 +507,7 @@ export default function DropCRM() {
     if(stage.name==='Reunião / Sessão estratégica agendada') {
       setToast(`${lead.name} com reunião agendada! Mova para Vendas após a reunião.`)
     }
+    await sendNotif(`Lead movido: ${lead.name}`,`${lead.name} foi movido para "${stage.name}"`, 'lead','leads',leadId)
   }
 
   async function createLead() {
@@ -547,6 +570,58 @@ export default function DropCRM() {
     await sb.from('ai_conversations').update({human_takeover:v}).eq('id',conv.id)
     setAiConvs(prev=>prev.map(c=>c.id===conv.id?{...c,human_takeover:v}:c))
   }
+
+  // ── Notificações ────────────────────────────────────────
+  async function sendNotif(title:string, message:string, type:string, resource?:string, resourceId?:string) {
+    if(currentUser?.role==='admin') return // Admin não notifica a si mesmo
+    const admins = userProfiles.filter(u=>u.role==='admin'&&u.is_active)
+    for(const admin of admins) {
+      await sb.from('notifications').insert({
+        recipient_id:admin.id, actor_name:currentUser?.name??'Colaborador',
+        title, message, type, resource:resource??null, resource_id:resourceId??null,
+      })
+    }
+  }
+
+  async function markAllNotifsRead() {
+    const {data:{user}} = await sb.auth.getUser()
+    if(!user) return
+    await sb.from('notifications').update({read:true}).eq('recipient_id',user.id).eq('read',false)
+    setNotifs(prev=>prev.map(n=>({...n,read:true})))
+  }
+
+  async function logout() {
+    await sb.auth.signOut()
+    window.location.href = '/login'
+  }
+
+  async function uploadAvatar(file:File) {
+    const {data:{user}} = await sb.auth.getUser()
+    if(!user) return
+    setUploadingAvatar(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${user.id}/avatar.${ext}`
+      const {error:upErr} = await sb.storage.from('avatars').upload(path,file,{upsert:true})
+      if(upErr) { setToast('Erro ao fazer upload da foto.'); return }
+      const {data:{publicUrl}} = sb.storage.from('avatars').getPublicUrl(path)
+      await sb.from('user_profiles').update({avatar_url:publicUrl}).eq('id',user.id)
+      setCurrentUser(prev=>prev?{...prev,avatar_url:publicUrl}:prev)
+      setUserProfiles(prev=>prev.map(p=>p.id===user.id?{...p,avatar_url:publicUrl}:p))
+      setToast('Foto atualizada!')
+    } finally { setUploadingAvatar(false) }
+  }
+
+  async function saveProfile() {
+    const {data:{user}} = await sb.auth.getUser()
+    if(!user||!editName.trim()) return
+    await sb.from('user_profiles').update({name:editName}).eq('id',user.id)
+    setCurrentUser(prev=>prev?{...prev,name:editName}:prev)
+    setProfileModal(false)
+    setToast('Perfil atualizado!')
+  }
+
+  const notifUnread = notifs.filter(n=>!n.read).length
 
   // ── Tarefas: variáveis pré-computadas ──────────────────
   const periodTasks = getTasksInPeriod(standaloneTasks)
@@ -728,14 +803,40 @@ export default function DropCRM() {
           <div style={{fontSize:10,color:'#6B7280'}}>Análise inteligente dos leads</div>
         </div>
 
-        <div style={{padding:'10px',borderTop:'1px solid rgba(255,255,255,0.06)'}}>
-          <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8}}>
-            <div style={{width:30,height:30,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff',flexShrink:0}}>CP</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,fontWeight:500,color:'#F9FAFB'}}>Camila Pacheco</div>
-              <div style={{fontSize:10,color:'#4B5563'}}>CEO · Admin</div>
+        <div style={{padding:'10px',borderTop:'1px solid rgba(255,255,255,0.06)',position:'relative'}}>
+          <div onClick={()=>setProfileMenuOpen(p=>!p)} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,cursor:'pointer'}}
+            onMouseEnter={e=>(e.currentTarget.style.background='rgba(255,255,255,0.04)')}
+            onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
+            <div style={{width:32,height:32,borderRadius:'50%',overflow:'hidden',flexShrink:0,border:'2px solid rgba(229,62,62,0.4)'}}>
+              {currentUser?.avatar_url
+                ?<img src={currentUser.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                :<div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff'}}>{(currentUser?.name??'U').split(' ').map((w:string)=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+              }
             </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#F9FAFB',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{currentUser?.name??'Usuário'}</div>
+              <div style={{fontSize:10,color:currentUser?.role==='admin'?'#E53E3E':'#6B7280'}}>{currentUser?.role==='admin'?'👑 Admin':'⚡ Colaborador'}</div>
+            </div>
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="#4B5563" strokeWidth="1.5" strokeLinecap="round"/></svg>
           </div>
+
+          {profileMenuOpen&&(
+            <div style={{position:'absolute',bottom:'calc(100% + 4px)',left:10,right:10,background:'#111',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,overflow:'hidden',zIndex:100,boxShadow:'0 -8px 24px rgba(0,0,0,0.5)'}}>
+              <div onClick={()=>{setProfileMenuOpen(false);setEditName(currentUser?.name??'');setProfileModal(true)}} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 14px',cursor:'pointer'}}
+                onMouseEnter={e=>(e.currentTarget.style.background='rgba(255,255,255,0.05)')}
+                onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke="#9CA3AF" strokeWidth="1.4"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="#9CA3AF" strokeWidth="1.4" strokeLinecap="round"/></svg>
+                <span style={{fontSize:13,color:'#D1D5DB'}}>Configurar Perfil</span>
+              </div>
+              <div style={{height:'1px',background:'rgba(255,255,255,0.06)'}}/>
+              <div onClick={()=>{setProfileMenuOpen(false);logout()}} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 14px',cursor:'pointer'}}
+                onMouseEnter={e=>(e.currentTarget.style.background='rgba(229,62,62,0.08)')}
+                onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M10 11l4-4-4-4M14 8H6" stroke="#E53E3E" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <span style={{fontSize:13,color:'#E53E3E',fontWeight:500}}>Sair da conta</span>
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -749,11 +850,51 @@ export default function DropCRM() {
             <input placeholder="Buscar leads, deals, clientes..." value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,paddingLeft:34,maxWidth:380,fontSize:12,height:36,borderRadius:8}}/>
           </div>
           <button onClick={()=>setAddLeadModal(true)} style={{padding:'8px 16px',borderRadius:8,border:'none',fontSize:12,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',boxShadow:'0 0 20px rgba(229,62,62,0.4)',whiteSpace:'nowrap',flexShrink:0}}>+ Novo Lead</button>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <button style={{width:36,height:36,borderRadius:8,background:'transparent',border:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#6B7280'}}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2a5 5 0 00-5 5c0 2.5-.5 3.5-1.5 4.5h13C13.5 10.5 13 9.5 13 7a5 5 0 00-5-5zM6.5 13.5a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-            </button>
-            <div style={{width:32,height:32,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>CP</div>
+          <div style={{display:'flex',alignItems:'center',gap:8,position:'relative'}}>
+            {/* Sino notificações */}
+            <div style={{position:'relative'}}>
+              <button onClick={()=>{setNotifOpen(p=>!p);if(!notifOpen)markAllNotifsRead()}} style={{width:36,height:36,borderRadius:8,background:'transparent',border:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:notifUnread>0?'#E53E3E':'#6B7280',position:'relative'}}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2a5 5 0 00-5 5c0 2.5-.5 3.5-1.5 4.5h13C13.5 10.5 13 9.5 13 7a5 5 0 00-5-5zM6.5 13.5a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                {notifUnread>0&&<span style={{position:'absolute',top:-4,right:-4,width:16,height:16,borderRadius:'50%',background:'#E53E3E',fontSize:9,fontWeight:700,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center'}}>{notifUnread>9?'9+':notifUnread}</span>}
+              </button>
+
+              {notifOpen&&(
+                <div style={{position:'absolute',top:'calc(100% + 8px)',right:0,width:340,background:'#111',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,0.5)',zIndex:100,overflow:'hidden'}}>
+                  <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span style={{fontSize:13,fontWeight:600,color:'#F9FAFB'}}>Notificações</span>
+                    {notifUnread>0&&<span style={{fontSize:10,color:'#6B7280'}}>{notifUnread} não lida{notifUnread>1?'s':''}</span>}
+                  </div>
+                  <div style={{maxHeight:320,overflowY:'auto'}}>
+                    {notifs.length===0&&<p style={{padding:24,textAlign:'center',color:'#4B5563',fontSize:13}}>Nenhuma notificação</p>}
+                    {notifs.map(n=>{
+                      const typeIcon:{[k:string]:string}={task:'✓',lead:'→',followup:'⏰',user:'👤',system:'⚙'}
+                      const typeColor:{[k:string]:string}={task:'#10B981',lead:'#3B82F6',followup:'#F59E0B',user:'#8B5CF6',system:'#6B7280'}
+                      return (
+                        <div key={n.id} style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.04)',background:n.read?'transparent':'rgba(229,62,62,0.04)'}}>
+                          <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+                            <div style={{width:28,height:28,borderRadius:'50%',background:`${typeColor[n.type]||'#6B7280'}18`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:typeColor[n.type]||'#6B7280',flexShrink:0}}>{typeIcon[n.type]||'·'}</div>
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:12,fontWeight:600,color:'#F9FAFB',marginBottom:2}}>{n.title}</div>
+                              <div style={{fontSize:11,color:'#6B7280',lineHeight:1.4}}>{n.message}</div>
+                              <div style={{fontSize:10,color:'#374151',marginTop:4}}>{n.actor_name} · {timeAgo(n.created_at)}</div>
+                            </div>
+                            {!n.read&&<div style={{width:6,height:6,borderRadius:'50%',background:'#E53E3E',flexShrink:0,marginTop:4}}/>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Avatar topbar */}
+            <div onClick={()=>setProfileMenuOpen(p=>!p)} style={{width:32,height:32,borderRadius:'50%',overflow:'hidden',cursor:'pointer',border:'1px solid rgba(229,62,62,0.3)'}}>
+              {currentUser?.avatar_url
+                ?<img src={currentUser.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                :<div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'#fff'}}>{(currentUser?.name??'U').split(' ').map((w:string)=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+              }
+            </div>
           </div>
         </div>
 
@@ -2231,6 +2372,49 @@ export default function DropCRM() {
               </div>
               <button onClick={createUser} disabled={savingUser||!newUser.name.trim()||!newUser.email.trim()||!newUser.password.trim()} style={{padding:'11px',borderRadius:10,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',opacity:savingUser||!newUser.name.trim()||!newUser.email.trim()||!newUser.password.trim()?0.4:1}}>
                 {savingUser?'Criando...' : 'Criar Usuário'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL PERFIL ── */}
+      {profileModal&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',backdropFilter:'blur(4px)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setProfileModal(false)}>
+          <div style={{background:'#111',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,width:'100%',maxWidth:400,fontFamily:'Montserrat,sans-serif'}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontSize:15,fontWeight:700,color:'#F9FAFB'}}>Configurar Perfil</div>
+              <button onClick={()=>setProfileModal(false)} style={{background:'none',border:'none',color:'#6B7280',cursor:'pointer',fontSize:18}}>×</button>
+            </div>
+            <div style={{padding:24,display:'flex',flexDirection:'column',gap:20,alignItems:'center'}}>
+              {/* Avatar */}
+              <div style={{position:'relative'}}>
+                <div style={{width:80,height:80,borderRadius:'50%',overflow:'hidden',border:'3px solid rgba(229,62,62,0.5)',cursor:'pointer'}} onClick={()=>avatarInputRef.current?.click()}>
+                  {currentUser?.avatar_url
+                    ?<img src={currentUser.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                    :<div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,fontWeight:700,color:'#fff'}}>{(currentUser?.name??'U').split(' ').map((w:string)=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+                  }
+                </div>
+                <div onClick={()=>avatarInputRef.current?.click()} style={{position:'absolute',bottom:0,right:0,width:26,height:26,borderRadius:'50%',background:'#E53E3E',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',border:'2px solid #111'}}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M9 1L11 3 4 10H2V8L9 1z" stroke="#fff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+                <input ref={avatarInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)uploadAvatar(f)}}/>
+              </div>
+
+              {uploadingAvatar&&<div style={{fontSize:12,color:'#6B7280'}}>Fazendo upload...</div>}
+
+              <div style={{width:'100%'}}>
+                <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:6}}>Nome</label>
+                <input value={editName} onChange={e=>setEditName(e.target.value)} style={{padding:'10px 14px',background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,color:'#F9FAFB',fontSize:13,outline:'none',width:'100%',fontFamily:'Montserrat,sans-serif'}}/>
+              </div>
+
+              <div style={{width:'100%',background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.05)',borderRadius:8,padding:'10px 14px'}}>
+                <div style={{fontSize:10,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:4}}>Nível de acesso</div>
+                <div style={{fontSize:13,color:currentUser?.role==='admin'?'#E53E3E':'#9CA3AF',fontWeight:600}}>{currentUser?.role==='admin'?'👑 Administrador':'⚡ Colaborador'}</div>
+              </div>
+
+              <button onClick={saveProfile} style={{width:'100%',padding:'11px',borderRadius:10,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)'}}>
+                Salvar alterações
               </button>
             </div>
           </div>
