@@ -682,6 +682,22 @@ export default function DropCRM() {
     marginBottom:1,
   })
 
+  // Mapa painel → chave de permissão
+  const PANEL_PERM: Record<string,string> = {
+    dashboard:'dashboard',
+    aquisicao:'crm', vendas:'crm', operacao:'crm', followup:'crm',
+    tarefas:'tarefas', projetos:'projetos', marketing:'marketing',
+    equipe:'equipe', financeiro:'financeiro',
+    integracoes:'integracoes', configuracoes:'configuracoes',
+  }
+  const hasPerm = (panelId:string): boolean => {
+    if(!currentUser) return true
+    if(currentUser.role==='admin'||currentUser.role==='gestor') return true
+    const key = PANEL_PERM[panelId]
+    if(!key) return currentUser.role==='admin'
+    return !!(currentUser.permissions as Record<string,boolean>)[key]
+  }
+
   function KanbanBoard({ kanbanKey, title, subtitle }: { kanbanKey:string, title:string, subtitle:string }) {
     const kStages = stages.filter(s=>s.kanban===kanbanKey)
     const VENDAS_FU_STAGES = ['Reunião realizada','Proposta enviada','Em negociação','Perdido']
@@ -767,41 +783,64 @@ export default function DropCRM() {
         </div>
 
         <nav style={{flex:1,padding:'12px 10px',overflowY:'auto'}}>
-          <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'4px 14px 8px'}}>VISÃO GERAL</div>
-          {NAV.slice(0,1).map(n=>(
-            <div key={n.id} style={navStyle(n.id)} onClick={()=>setPanel(n.id)}>
-              <span style={{color:panel===n.id?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS[n.id]}</span>{n.label}
+          {hasPerm('dashboard')&&<>
+            <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'4px 14px 8px'}}>VISÃO GERAL</div>
+            <div style={navStyle('dashboard')} onClick={()=>setPanel('dashboard')}>
+              <span style={{color:panel==='dashboard'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['dashboard']}</span>Dashboard
             </div>
-          ))}
+          </>}
 
-          <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'12px 14px 8px'}}>JORNADA DO LEAD</div>
-          {NAV.slice(1,4).map(n=>(
-            <div key={n.id} style={navStyle(n.id)} onClick={()=>setPanel(n.id)}>
-              <span style={{color:panel===n.id?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS[n.id]}</span>
-              {n.label}
-              <span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(255,255,255,0.06)',color:'#6B7280',padding:'1px 6px',borderRadius:99}}>
-                {leads.filter(l=>stages.find(s=>s.id===l.stage_id)?.kanban===n.id).length}
-              </span>
+          {hasPerm('crm')&&<>
+            <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'12px 14px 8px'}}>JORNADA DO LEAD</div>
+            {NAV.slice(1,4).map(n=>(
+              <div key={n.id} style={navStyle(n.id)} onClick={()=>setPanel(n.id)}>
+                <span style={{color:panel===n.id?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS[n.id]}</span>
+                {n.label}
+                <span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(255,255,255,0.06)',color:'#6B7280',padding:'1px 6px',borderRadius:99}}>
+                  {leads.filter(l=>stages.find(s=>s.id===l.stage_id)?.kanban===n.id).length}
+                </span>
+              </div>
+            ))}
+            <div style={navStyle('followup')} onClick={()=>setPanel('followup')}>
+              <span style={{color:panel==='followup'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['followup']}</span>
+              Follow-up
+              {pendingFu>0&&<span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(245,158,11,0.15)',color:'#F59E0B',padding:'1px 6px',borderRadius:99}}>{pendingFu}</span>}
             </div>
-          ))}
+          </>}
 
-          <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'12px 14px 8px'}}>GESTÃO</div>
-          {[NAV[4],NAV[5],NAV[6],NAV[7],NAV[8]].map(n=>(
-            <div key={n.id} style={navStyle(n.id)} onClick={()=>setPanel(n.id)}>
-              <span style={{color:panel===n.id?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS[n.id]}</span>
-              {n.label}
-              {n.id==='followup'&&pendingFu>0&&<span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(245,158,11,0.15)',color:'#F59E0B',padding:'1px 6px',borderRadius:99}}>{pendingFu}</span>}
-              {n.id==='tarefas'&&standaloneTasks.filter(t=>t.status!=='done'&&t.status!=='cancelled').length>0&&<span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(229,62,62,0.12)',color:'#E53E3E',padding:'1px 6px',borderRadius:99}}>{standaloneTasks.filter(t=>t.status!=='done'&&t.status!=='cancelled').length}</span>}
-              {n.id==='projetos'&&projects.filter(p=>p.status==='active').length>0&&<span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(255,255,255,0.06)',color:'#9CA3AF',padding:'1px 6px',borderRadius:99}}>{projects.filter(p=>p.status==='active').length}</span>}
-            </div>
-          ))}
+          {[
+            {id:'tarefas',perm:'tarefas'},{id:'projetos',perm:'projetos'},
+            {id:'marketing',perm:'marketing'},{id:'equipe',perm:'equipe'}
+          ].some(x=>hasPerm(x.id))&&(
+            <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'12px 14px 8px'}}>GESTÃO</div>
+          )}
+          {hasPerm('tarefas')&&<div style={navStyle('tarefas')} onClick={()=>setPanel('tarefas')}>
+            <span style={{color:panel==='tarefas'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['tarefas']}</span>Tarefas
+            {standaloneTasks.filter(t=>t.status!=='done'&&t.status!=='cancelled').length>0&&<span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(229,62,62,0.12)',color:'#E53E3E',padding:'1px 6px',borderRadius:99}}>{standaloneTasks.filter(t=>t.status!=='done'&&t.status!=='cancelled').length}</span>}
+          </div>}
+          {hasPerm('projetos')&&<div style={navStyle('projetos')} onClick={()=>setPanel('projetos')}>
+            <span style={{color:panel==='projetos'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['projetos']}</span>Projetos
+            {projects.filter(p=>p.status==='active').length>0&&<span style={{marginLeft:'auto',fontSize:9,fontWeight:700,background:'rgba(255,255,255,0.06)',color:'#9CA3AF',padding:'1px 6px',borderRadius:99}}>{projects.filter(p=>p.status==='active').length}</span>}
+          </div>}
+          {hasPerm('marketing')&&<div style={navStyle('marketing')} onClick={()=>setPanel('marketing')}>
+            <span style={{color:panel==='marketing'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['marketing']}</span>Marketing
+          </div>}
+          {hasPerm('equipe')&&<div style={navStyle('equipe')} onClick={()=>setPanel('equipe')}>
+            <span style={{color:panel==='equipe'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['equipe']}</span>Equipe
+          </div>}
 
-          <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'12px 14px 8px'}}>SISTEMA</div>
-          {NAV.slice(9,12).map(n=>(
-            <div key={n.id} style={navStyle(n.id)} onClick={()=>setPanel(n.id)}>
-              <span style={{color:panel===n.id?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS[n.id]}</span>{n.label}
-            </div>
-          ))}
+          {[{id:'financeiro'},{id:'integracoes'},{id:'configuracoes'}].some(x=>hasPerm(x.id))&&(
+            <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'12px 14px 8px'}}>SISTEMA</div>
+          )}
+          {hasPerm('financeiro')&&<div style={navStyle('financeiro')} onClick={()=>setPanel('financeiro')}>
+            <span style={{color:panel==='financeiro'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['financeiro']}</span>Financeiro
+          </div>}
+          {hasPerm('integracoes')&&<div style={navStyle('integracoes')} onClick={()=>setPanel('integracoes')}>
+            <span style={{color:panel==='integracoes'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['integracoes']}</span>Integrações
+          </div>}
+          {hasPerm('configuracoes')&&<div style={navStyle('configuracoes')} onClick={()=>setPanel('configuracoes')}>
+            <span style={{color:panel==='configuracoes'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['configuracoes']}</span>Configurações
+          </div>}
           {(currentUser?.role==='admin'||currentUser===null)&&(
             <div style={navStyle('administracao')} onClick={()=>setPanel('administracao')}>
               <span style={{color:panel==='administracao'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['administracao']}</span>
@@ -914,7 +953,7 @@ export default function DropCRM() {
         <div style={{flex:1,overflowY:'auto',overflowX:'hidden'}}>
 
           {/* ── DASHBOARD ── */}
-          {panel==='dashboard'&&(
+          {panel==='dashboard'&&hasPerm('dashboard')&&(
             <div style={{padding:28}}>
               <div style={{marginBottom:24}}>
                 <h1 style={{fontSize:24,fontWeight:800,color:'#F9FAFB',letterSpacing:'-0.03em',margin:0}}>Dashboard Executivo</h1>
@@ -988,12 +1027,12 @@ export default function DropCRM() {
           )}
 
           {/* ── KANBANS ── */}
-          {panel==='aquisicao'&&<KanbanBoard kanbanKey="aquisicao" title="Aquisição" subtitle="Entrada e qualificação de leads — do frio ao qualificado com reunião agendada"/>}
-          {panel==='vendas'&&<KanbanBoard kanbanKey="vendas" title="Vendas" subtitle="Processo comercial — reunião → proposta → fechamento. Botão FU para criar follow-up manual."/>}
-          {panel==='operacao'&&<KanbanBoard kanbanKey="operacao" title="Operação" subtitle="Entrega e relacionamento pós-fechamento — acompanhe cada cliente ativo"/>}
+          {panel==='aquisicao'&&hasPerm('crm')&&<KanbanBoard kanbanKey="aquisicao" title="Aquisição" subtitle="Entrada e qualificação de leads — do frio ao qualificado com reunião agendada"/>}
+          {panel==='vendas'&&hasPerm('crm')&&<KanbanBoard kanbanKey="vendas" title="Vendas" subtitle="Processo comercial — reunião → proposta → fechamento. Botão FU para criar follow-up manual."/>}
+          {panel==='operacao'&&hasPerm('crm')&&<KanbanBoard kanbanKey="operacao" title="Operação" subtitle="Entrega e relacionamento pós-fechamento — acompanhe cada cliente ativo"/>}
 
           {/* ── FOLLOW-UP ── */}
-          {panel==='followup'&&(
+          {panel==='followup'&&hasPerm('crm')&&(
             <div style={{padding:28}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
                 <div>
@@ -1112,7 +1151,7 @@ export default function DropCRM() {
           )}
 
           {/* ── FINANCEIRO ── */}
-          {panel==='financeiro'&&(
+          {panel==='financeiro'&&hasPerm('financeiro')&&(
             <div style={{padding:28}}>
               <div style={{marginBottom:24}}>
                 <h1 style={{fontSize:24,fontWeight:800,color:'#F9FAFB',letterSpacing:'-0.03em',margin:0}}>Financeiro</h1>
@@ -1159,7 +1198,7 @@ export default function DropCRM() {
           )}
 
           {/* ── INTEGRAÇÕES ── */}
-          {panel==='integracoes'&&(
+          {panel==='integracoes'&&hasPerm('integracoes')&&(
             <div style={{padding:28}}>
               <div style={{marginBottom:24}}>
                 <h2 style={{fontSize:20,fontWeight:700,color:'#F9FAFB',margin:0}}>Integrações</h2>
@@ -1195,7 +1234,7 @@ export default function DropCRM() {
           )}
 
           {/* ── CONFIGURAÇÕES ── */}
-          {panel==='configuracoes'&&(
+          {panel==='configuracoes'&&hasPerm('configuracoes')&&(
             <div style={{padding:28}}>
               <div style={{marginBottom:24}}>
                 <h2 style={{fontSize:20,fontWeight:700,color:'#F9FAFB',margin:0}}>Configurações</h2>
@@ -1235,7 +1274,7 @@ export default function DropCRM() {
           )}
 
           {/* ── PROJETOS ── */}
-          {panel==='projetos'&&(
+          {panel==='projetos'&&hasPerm('projetos')&&(
             <div style={{padding:28}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
                 <div>
@@ -1332,7 +1371,7 @@ export default function DropCRM() {
           )}
 
           {/* ── MARKETING ── */}
-          {panel==='marketing'&&(
+          {panel==='marketing'&&hasPerm('marketing')&&(
             <div style={{padding:28}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
                 <div>
@@ -1421,7 +1460,7 @@ export default function DropCRM() {
           )}
 
           {/* ── EQUIPE ── */}
-          {panel==='equipe'&&(
+          {panel==='equipe'&&hasPerm('equipe')&&(
             <div style={{padding:28}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
                 <div>
@@ -1779,7 +1818,7 @@ export default function DropCRM() {
           )}
 
           {/* ── TAREFAS ── */}
-          {panel==='tarefas'&&(
+          {panel==='tarefas'&&hasPerm('tarefas')&&(
               <div style={{padding:28}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:12}}>
                   <div>
