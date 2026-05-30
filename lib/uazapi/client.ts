@@ -29,3 +29,15 @@ export async function isWithinBusinessHours(): Promise<boolean> {
   const hour  = now.getHours()
   return hour >= start && hour < end
 }
+
+export async function notifyHandoff(leadPhone: string, leadName: string, summary: string) {
+  const adminPhone = process.env.ADMIN_PHONE
+  if (!adminPhone) return
+  const text =
+    `🚨 *Novo lead para atendimento humano*\n\n` +
+    `👤 *Lead:* ${leadName}\n` +
+    `📱 *WhatsApp:* +${leadPhone}\n\n` +
+    `📋 *Resumo da conversa:*\n${summary}\n\n` +
+    `👉 Acesse o CRM para continuar o atendimento.`
+  await sendText(adminPhone, text)
+}

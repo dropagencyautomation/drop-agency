@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 import { createServiceClient } from '@/lib/supabase/server'
 import { processMessage } from '@/lib/openai/agent'
-import { sendText, isWithinBusinessHours } from '@/lib/uazapi/client'
+import { sendText, isWithinBusinessHours, notifyHandoff } from '@/lib/uazapi/client'
 import type { AiConversation } from '@/types/database'
 
 export async function POST(req: NextRequest) {
@@ -112,9 +112,30 @@ export async function POST(req: NextRequest) {
     // Envia resposta
     await sendText(phone, reply)
 
-    // Se handoff: notifica Camila (TODO: implementar notificação)
+    // Se handoff: avança lead no kanban + notifica Camila
     if (shouldHandoff) {
+      // Busca dados do lead para a notificação
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('name, phone, niche, desired_service, revenue_range, urgency')
+        .eq('id', conversation.lead_id)
+        .single()
+
       await supabase.from('leads').update({ stage_id: 2 }).eq('id', conversation.lead_id)
+
+      // Monta resumo com dados coletados
+      const q = conversation.qualification_data ?? {}
+      const lines: string[] = []
+      if (q.niche)           lines.push(`• Nicho: ${q.niche}`)
+      if (q.desired_service) lines.push(`• Serviço: ${q.desired_service}`)
+      if (q.revenue_range)   lines.push(`• Faturamento: ${q.revenue_range}`)
+      if (q.urgency)         lines.push(`• Urgência: ${q.urgency}`)
+      if (q.main_pains)      lines.push(`• Dores: ${q.main_pains}`)
+      if (q.estimated_budget)lines.push(`• Budget estimado: ${q.estimated_budget}`)
+      const summary = lines.length > 0 ? lines.join('\n') : 'Sem dados coletados ainda.'
+
+      const leadName = lead?.name ?? phone
+      await notifyHandoff(phone, leadName, summary)
     }
 
     return NextResponse.json({ ok: true })
