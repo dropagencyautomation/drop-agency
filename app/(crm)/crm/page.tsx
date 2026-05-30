@@ -78,6 +78,61 @@ const platformIcon: Record<string,string> = { meta_ads:'f', google_ads:'G', tikt
 const ALL_MODULES = ['dashboard','crm','clientes','tarefas','projetos','marketing','equipe','financeiro','integracoes','configuracoes','administracao'] as const
 const MODULE_LABELS: Record<string,string> = { dashboard:'Dashboard',crm:'CRM',clientes:'Clientes',tarefas:'Tarefas',projetos:'Projetos',marketing:'Marketing',equipe:'Equipe',financeiro:'Financeiro',integracoes:'Integrações',configuracoes:'Configurações',administracao:'Administração' }
 
+// Permissões granulares
+const PERM_GROUPS = [
+  { label:'Módulos', perms:[
+    {key:'dashboard',label:'Dashboard'},
+    {key:'crm',label:'CRM / Leads'},
+    {key:'clientes',label:'Clientes'},
+    {key:'projetos',label:'Projetos'},
+    {key:'marketing',label:'Marketing'},
+    {key:'equipe',label:'Equipe'},
+    {key:'financeiro',label:'Financeiro'},
+    {key:'integracoes',label:'Integrações'},
+    {key:'configuracoes',label:'Configurações'},
+  ]},
+  { label:'Tarefas', perms:[
+    {key:'tasks_view_own',label:'Ver tarefas próprias'},
+    {key:'tasks_view_all',label:'Ver todas as tarefas'},
+    {key:'tasks_create',label:'Criar tarefas'},
+    {key:'tasks_edit',label:'Editar tarefas'},
+    {key:'tasks_delete',label:'Excluir tarefas'},
+    {key:'tasks_move',label:'Mover no Kanban'},
+    {key:'tasks_complete',label:'Concluir tarefas'},
+    {key:'tasks_change_assignee',label:'Alterar responsável'},
+    {key:'tasks_change_client',label:'Alterar cliente vinculado'},
+    {key:'tasks_comment',label:'Comentar / observações'},
+  ]},
+  { label:'Clientes', perms:[
+    {key:'clients_view_own',label:'Ver clientes vinculados'},
+    {key:'clients_view_all',label:'Ver todos os clientes'},
+    {key:'clients_create',label:'Criar clientes'},
+    {key:'clients_edit',label:'Editar clientes'},
+    {key:'clients_delete',label:'Excluir clientes'},
+  ]},
+  { label:'Equipe', perms:[
+    {key:'team_view',label:'Ver equipe'},
+    {key:'team_create',label:'Criar colaborador'},
+    {key:'team_edit',label:'Editar colaborador'},
+    {key:'team_delete',label:'Excluir colaborador'},
+    {key:'team_manage_perms',label:'Alterar permissões'},
+  ]},
+]
+
+const DEFAULT_COLLAB_PERMS = {
+  dashboard:true, crm:true, clientes:true,
+  projetos:false, marketing:false, equipe:false,
+  financeiro:false, integracoes:false, configuracoes:false,
+  tasks_view_own:true, tasks_view_all:false,
+  tasks_create:false, tasks_edit:false, tasks_delete:false,
+  tasks_move:true, tasks_complete:true,
+  tasks_change_assignee:false, tasks_change_client:false, tasks_comment:true,
+  clients_view_own:true, clients_view_all:false,
+  clients_create:false, clients_edit:false, clients_delete:false,
+  team_view:true, team_create:false, team_edit:false,
+  team_delete:false, team_manage_perms:false,
+}
+
 const NAV = [
   { id:'dashboard',     label:'Dashboard' },
   { id:'aquisicao',     label:'Aquisição' },
@@ -203,8 +258,7 @@ export default function DropCRM() {
   const [campaigns,setCampaigns] = useState<Campaign[]>([])
   const [equipeTab,setEquipeTab] = useState<'membros'|'produtividade'|'xp'|'organograma'>('membros')
   const [orgAccessModal,setOrgAccessModal] = useState<TeamMember|null>(null)
-  const DEFAULT_PERMS = {dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}
-  const [orgAccessForm,setOrgAccessForm] = useState({email:'',password:'',confirmPassword:'',permissions:{...{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}}})
+  const [orgAccessForm,setOrgAccessForm] = useState({email:'',password:'',confirmPassword:'',permissions:{...DEFAULT_COLLAB_PERMS}})
   const [orgAccessSaving,setOrgAccessSaving] = useState(false)
   const [selectedProject,setSelectedProject] = useState<Project|null>(null)
   const [addProjectModal,setAddProjectModal] = useState(false)
@@ -214,7 +268,7 @@ export default function DropCRM() {
   const [newProject,setNewProject] = useState({name:'',client_name:'',description:'',budget:'',start_date:'',end_date:'',color:'#E53E3E'})
   const [newTask,setNewTask] = useState({title:'',description:'',assigned_to:'',priority:'medium',due_date:''})
   const [newCampaign,setNewCampaign] = useState({client_name:'',campaign_name:'',platform:'meta_ads',budget:'',spend:'',impressions:'',clicks:'',leads_gen:'',conversions:'',revenue:'',period_start:'',period_end:''})
-  const [newMember,setNewMember] = useState({name:'',email:'',role:'',avatar_color:'#E53E3E',createLogin:false,password:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})
+  const [newMember,setNewMember] = useState({name:'',email:'',role:'',avatar_color:'#E53E3E',createLogin:false,password:'',permissions:{...DEFAULT_COLLAB_PERMS}})
   // Tarefas standalone
   const [standaloneTasks,setStandaloneTasks] = useState<Task[]>([])
   const [taskAssignees,setTaskAssignees] = useState<TaskAssignee[]>([])
@@ -231,7 +285,7 @@ export default function DropCRM() {
   const [editPermUser,setEditPermUser] = useState<UserProfile|null>(null)
   const [editPermModal,setEditPermModal] = useState(false)
   const [confirmRemoveMember,setConfirmRemoveMember] = useState(false)
-  const [newUser,setNewUser] = useState({name:'',email:'',password:'',role:'colaborador',member_id:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})
+  const [newUser,setNewUser] = useState({name:'',email:'',password:'',role:'colaborador',member_id:'',permissions:{...DEFAULT_COLLAB_PERMS}})
   const [savingUser,setSavingUser] = useState(false)
   // Notificações + Perfil
   const [notifs,setNotifs] = useState<Notif[]>([])
@@ -271,20 +325,43 @@ export default function DropCRM() {
     if(pm.data) setProjectMembers(pm.data)
     if(tk.data) setTasks(tk.data)
     if(cp.data) setCampaigns(cp.data)
-    const [tk2,ta,up,al] = await Promise.all([
-      sb.from('tasks').select('*').order('created_at',{ascending:false}),
+    const [ta,up,al] = await Promise.all([
       sb.from('task_assignees').select('*'),
       sb.from('user_profiles').select('*').order('created_at'),
       sb.from('audit_log').select('*').order('created_at',{ascending:false}).limit(50),
     ])
-    if(tk2.data) setStandaloneTasks(tk2.data)
     if(ta.data) setTaskAssignees(ta.data)
     if(up.data) setUserProfiles(up.data)
     if(al.data) setAuditLogs(al.data)
+
+    // Filtra tarefas: admin/gestor vê tudo; colaborador só as suas (via task_assignees)
+    const {data:{user:authUser}} = await sb.auth.getUser()
+    const myProfile = up.data?.find(p=>p.id===authUser?.id)
+    const isAdminOrGestor = myProfile?.role==='admin'||myProfile?.role==='gestor'
+    const canViewAll = isAdminOrGestor || !!(myProfile?.permissions as Record<string,boolean>|undefined)?.tasks_view_all
+
+    if(canViewAll) {
+      const {data:tk2} = await sb.from('tasks').select('*').order('created_at',{ascending:false})
+      if(tk2) setStandaloneTasks(tk2)
+    } else {
+      // Só tarefas onde o membro vinculado ao user está como responsável
+      const myMemberId = myProfile?.member_id
+      if(myMemberId && ta.data) {
+        const myTaskIds = ta.data.filter(a=>a.member_id===myMemberId).map(a=>a.task_id)
+        if(myTaskIds.length>0) {
+          const {data:tk2} = await sb.from('tasks').select('*').in('id',myTaskIds).order('created_at',{ascending:false})
+          if(tk2) setStandaloneTasks(tk2)
+        } else {
+          setStandaloneTasks([])
+        }
+      } else {
+        setStandaloneTasks([])
+      }
+    }
+
     // Notificações do usuário atual
-    const {data:{user}} = await sb.auth.getUser()
-    if(user) {
-      const {data:nf} = await sb.from('notifications').select('*').eq('recipient_id',user.id).order('created_at',{ascending:false}).limit(30)
+    if(authUser) {
+      const {data:nf} = await sb.from('notifications').select('*').eq('recipient_id',authUser.id).order('created_at',{ascending:false}).limit(30)
       if(nf) setNotifs(nf)
     }
   }
@@ -407,7 +484,7 @@ export default function DropCRM() {
       const data = await res.json()
       if(data.success) {
         setCreateUserModal(false)
-        setNewUser({name:'',email:'',password:'',role:'colaborador',member_id:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})
+        setNewUser({name:'',email:'',password:'',role:'colaborador',member_id:'',permissions:{...DEFAULT_COLLAB_PERMS}})
         setToast('Usuário criado com sucesso!')
         await fetchAll()
       } else setToast(`Erro: ${data.error}`)
@@ -455,7 +532,7 @@ export default function DropCRM() {
         await fetch('/api/admin/create-user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newMember.name,email:newMember.email,password:newMember.password,role:'colaborador',member_id:data.id,permissions:newMember.permissions})})
       }
       setAddMemberModal(false)
-      setNewMember({name:'',email:'',role:'',avatar_color:'#E53E3E',createLogin:false,password:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})
+      setNewMember({name:'',email:'',role:'',avatar_color:'#E53E3E',createLogin:false,password:'',permissions:{...DEFAULT_COLLAB_PERMS}})
       setToast('Membro adicionado!')
       await fetchAll()
     }
@@ -690,12 +767,51 @@ export default function DropCRM() {
     equipe:'equipe', financeiro:'financeiro',
     integracoes:'integracoes', configuracoes:'configuracoes',
   }
-  const hasPerm = (panelId:string): boolean => {
+  const hasPerm = (key:string): boolean => {
     if(!currentUser) return true
-    if(currentUser.role==='admin'||currentUser.role==='gestor') return true
-    const key = PANEL_PERM[panelId]
-    if(!key) return currentUser.role==='admin'
-    return !!(currentUser.permissions as Record<string,boolean>)[key]
+    if(currentUser.role==='admin') return true
+    if(currentUser.role==='gestor') return true
+    const perms = (currentUser.permissions ?? {}) as Record<string,boolean>
+    // Chave direta (granular ou de módulo)
+    if(key in perms) return !!perms[key]
+    // Painel → módulo legado
+    const panelKey = PANEL_PERM[key]
+    if(panelKey && panelKey in perms) return !!perms[panelKey]
+    // Fallback: chaves granulares novas em perfis antigos com permissão de módulo legado
+    const LEGACY: Record<string,string> = {
+      tasks_view_own:'tarefas', tasks_move:'tarefas', tasks_complete:'tarefas', tasks_comment:'tarefas',
+      clients_view_own:'clientes',
+      team_view:'equipe',
+    }
+    if(LEGACY[key] && perms[LEGACY[key]]) return true
+    return false
+  }
+
+  // Helper: checklist de permissões agrupado reutilizável
+  function PermChecklist({ perms, onChange }: { perms: Record<string,boolean>, onChange: (key:string, val:boolean) => void }) {
+    return (
+      <div style={{display:'flex',flexDirection:'column',gap:12,maxHeight:360,overflowY:'auto'}}>
+        {PERM_GROUPS.map(group=>(
+          <div key={group.label}>
+            <div style={{fontSize:9,fontWeight:700,color:'#E53E3E',textTransform:'uppercase' as const,letterSpacing:'0.12em',marginBottom:5}}>{group.label}</div>
+            <div style={{display:'flex',flexDirection:'column',gap:3}}>
+              {group.perms.map(({key,label})=>{
+                const on=!!perms[key]
+                return (
+                  <label key={key} onClick={()=>onChange(key,!on)}
+                    style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 8px',background:on?'rgba(229,62,62,0.06)':'rgba(255,255,255,0.02)',borderRadius:6,border:`1px solid ${on?'rgba(229,62,62,0.2)':'rgba(255,255,255,0.04)'}`,transition:'all 0.12s'}}>
+                    <div style={{width:14,height:14,borderRadius:3,background:on?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${on?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                      {on&&<svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
+                    </div>
+                    <span style={{fontSize:11,color:on?'#F9FAFB':'#9CA3AF'}}>{label}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
   }
 
   function KanbanBoard({ kanbanKey, title, subtitle }: { kanbanKey:string, title:string, subtitle:string }) {
@@ -1496,7 +1612,7 @@ export default function DropCRM() {
                         onClick={()=>{
                           if(!currentUser||currentUser.role!=='admin') return
                           if(mProfile){ setEditPermUser({...mProfile}); setEditPermModal(true) }
-                          else { setOrgAccessModal(m); setOrgAccessForm({email:mEmail,password:'',confirmPassword:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}}) }
+                          else { setOrgAccessModal(m); setOrgAccessForm({email:mEmail,password:'',confirmPassword:'',permissions:{...DEFAULT_COLLAB_PERMS}}) }
                         }}
                         style={{background:'rgba(10,10,10,0.75)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,padding:20,backdropFilter:'blur(12px)',cursor:currentUser?.role==='admin'?'pointer':'default',transition:'border-color 0.15s'}}
                         onMouseEnter={e=>{ if(currentUser?.role==='admin') e.currentTarget.style.borderColor='rgba(229,62,62,0.3)' }}
@@ -1723,7 +1839,7 @@ export default function DropCRM() {
                                     <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4,flexShrink:0}}>
                                       <div style={{width:7,height:7,borderRadius:'50%',background:access?'#10B981':'#4B5563'}} title={access?'Com acesso':'Sem acesso'}/>
                                       {currentUser?.role==='admin'&&!access&&(
-                                        <button onClick={e=>{e.stopPropagation();setOrgAccessModal(m);setOrgAccessForm({email,password:'',confirmPassword:'',permissions:{dashboard:true,crm:true,clientes:true,tarefas:true,projetos:false,marketing:false,equipe:false,financeiro:false,integracoes:false,configuracoes:false,administracao:false}})}}
+                                        <button onClick={e=>{e.stopPropagation();setOrgAccessModal(m);setOrgAccessForm({email,password:'',confirmPassword:'',permissions:{...DEFAULT_COLLAB_PERMS}})}}
                                           style={{padding:'2px 6px',borderRadius:4,border:'1px solid rgba(255,255,255,0.08)',background:'transparent',color:'#6B7280',fontSize:8,cursor:'pointer',fontFamily:'Montserrat,sans-serif',fontWeight:600,whiteSpace:'nowrap'}}>
                                           + acesso
                                         </button>
@@ -1838,7 +1954,7 @@ export default function DropCRM() {
                         <button key={v} onClick={()=>setTaskView(v)} style={{padding:'4px 10px',borderRadius:6,border:'none',fontSize:12,cursor:'pointer',background:taskView===v?'rgba(229,62,62,0.2)':'transparent',color:taskView===v?'#E53E3E':'#6B7280'}}>{ic}</button>
                       )})}
                     </div>
-                    <button onClick={()=>setAddTaskStandaloneModal(true)} style={{padding:'8px 16px',borderRadius:8,border:'none',fontSize:12,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)'}}>+ Nova Tarefa</button>
+                    {hasPerm('tasks_create')&&<button onClick={()=>setAddTaskStandaloneModal(true)} style={{padding:'8px 16px',borderRadius:8,border:'none',fontSize:12,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)'}}>+ Nova Tarefa</button>}
                   </div>
                 </div>
 
@@ -1950,7 +2066,7 @@ export default function DropCRM() {
                                   {t.due_date&&<span style={{fontSize:10,color:od?'#EF4444':'#6B7280'}}>{od?'⚠ ':''}{fmtDateShort(t.due_date)}</span>}
                                 </td>
                                 <td style={{padding:'11px 20px'}}>
-                                  {t.status!=='done'&&t.status!=='cancelled'&&(
+                                  {t.status!=='done'&&t.status!=='cancelled'&&hasPerm('tasks_complete')&&(
                                     <button onClick={()=>moveStandaloneTask(t.id,'done')} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:'1px solid rgba(16,185,129,0.3)',background:'rgba(16,185,129,0.08)',color:'#10B981',cursor:'pointer'}}>✓ Concluir</button>
                                   )}
                                 </td>
@@ -1971,7 +2087,7 @@ export default function DropCRM() {
                       return (
                         <div key={status} style={{width:250,flexShrink:0,background:'rgba(10,10,10,0.65)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:12,padding:12,minHeight:400,backdropFilter:'blur(10px)'}}
                           onDragOver={e=>e.preventDefault()}
-                          onDrop={e=>{e.preventDefault();const id=e.dataTransfer.getData('staskId');if(id)moveStandaloneTask(id,status)}}
+                          onDrop={e=>{e.preventDefault();if(!hasPerm('tasks_move'))return;const id=e.dataTransfer.getData('staskId');if(id)moveStandaloneTask(id,status)}}
                         >
                           <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:12,paddingBottom:10,borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
                             <span style={{width:7,height:7,borderRadius:'50%',background:TASK_ST_COLOR[status]}}/>
@@ -2124,18 +2240,26 @@ export default function DropCRM() {
                           ))}
                         </div>
                       </div>
-                      <div style={{marginBottom:16}}>
-                        <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:10}}>Módulos liberados</label>
-                        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                          {ALL_MODULES.map(mod=>(
-                            <label key={mod} style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'8px 10px',background:'rgba(255,255,255,0.02)',borderRadius:7,border:'1px solid rgba(255,255,255,0.04)'}}>
-                              <div onClick={()=>setEditPermUser(p=>p?{...p,permissions:{...p.permissions,[mod]:!(p.permissions as Record<string,boolean>)[mod]}}:p)} style={{width:18,height:18,borderRadius:4,background:editPermUser.permissions?.[mod]?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${editPermUser.permissions?.[mod]?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,cursor:'pointer'}}>
-                                {editPermUser.permissions?.[mod]&&<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
-                              </div>
-                              <span style={{fontSize:12,color:'#D1D5DB'}}>{MODULE_LABELS[mod]}</span>
-                            </label>
-                          ))}
-                        </div>
+                      <div style={{marginBottom:16,maxHeight:380,overflowY:'auto',display:'flex',flexDirection:'column',gap:14}}>
+                        {PERM_GROUPS.map(group=>(
+                          <div key={group.label}>
+                            <div style={{fontSize:9,fontWeight:700,color:'#E53E3E',textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:6,padding:'0 2px'}}>{group.label}</div>
+                            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                              {group.perms.map(({key,label})=>{
+                                const on=!!(editPermUser.permissions as Record<string,boolean>)?.[key]
+                                return (
+                                  <label key={key} onClick={()=>setEditPermUser(p=>p?{...p,permissions:{...p.permissions,[key]:!on}}:p)}
+                                    style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 8px',background:on?'rgba(229,62,62,0.06)':'rgba(255,255,255,0.02)',borderRadius:6,border:`1px solid ${on?'rgba(229,62,62,0.2)':'rgba(255,255,255,0.04)'}`,transition:'all 0.12s'}}>
+                                    <div style={{width:15,height:15,borderRadius:3,background:on?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${on?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                                      {on&&<svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
+                                    </div>
+                                    <span style={{fontSize:11,color:on?'#F9FAFB':'#9CA3AF'}}>{label}</span>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                       <button onClick={()=>savePermissions(editPermUser)} style={{width:'100%',padding:'10px',borderRadius:8,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)'}}>Salvar Permissões</button>
                     </div>
@@ -2528,21 +2652,8 @@ export default function DropCRM() {
                     <input type="password" value={newMember.password} onChange={e=>setNewMember(p=>({...p,password:e.target.value}))} placeholder="••••••••" style={{padding:'9px 12px',background:'#0D0D0D',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,color:'#F9FAFB',fontSize:13,outline:'none',width:'100%',fontFamily:'Montserrat,sans-serif'}}/>
                   </div>
                   <div>
-                    <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Módulos liberados</label>
-                    <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                      {ALL_MODULES.map(mod=>{
-                        const on = newMember.permissions[mod as keyof typeof newMember.permissions]
-                        return (
-                          <label key={mod} onClick={()=>setNewMember(p=>({...p,permissions:{...p.permissions,[mod]:!on}}))}
-                            style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'7px 10px',background:on?'rgba(229,62,62,0.06)':'rgba(255,255,255,0.02)',borderRadius:7,border:`1px solid ${on?'rgba(229,62,62,0.2)':'rgba(255,255,255,0.05)'}`,transition:'all 0.15s'}}>
-                            <div style={{width:16,height:16,borderRadius:3,background:on?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${on?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                              {on&&<svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
-                            </div>
-                            <span style={{fontSize:11,color:on?'#F9FAFB':'#9CA3AF',fontWeight:on?600:400}}>{MODULE_LABELS[mod]}</span>
-                          </label>
-                        )
-                      })}
-                    </div>
+                    <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Permissões</label>
+                    <PermChecklist perms={newMember.permissions as Record<string,boolean>} onChange={(k,v)=>setNewMember(p=>({...p,permissions:{...p.permissions,[k]:v}}))}/>
                   </div>
                 </>
               )}
@@ -2591,23 +2702,10 @@ export default function DropCRM() {
                   <div style={{position:'absolute',top:3,left:editPermUser.is_active?20:3,width:16,height:16,borderRadius:'50%',background:'#fff',transition:'left 0.2s'}}/>
                 </div>
               </div>
-              {/* Módulos */}
+              {/* Permissões granulares */}
               <div>
-                <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:10}}>Módulos liberados</label>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  {ALL_MODULES.map(mod=>{
-                    const on = editPermUser.permissions?.[mod]
-                    return (
-                      <label key={mod} onClick={()=>setEditPermUser(p=>p?{...p,permissions:{...p.permissions,[mod]:!on}}:p)}
-                        style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',padding:'9px 12px',background:on?'rgba(229,62,62,0.06)':'rgba(255,255,255,0.02)',borderRadius:8,border:`1px solid ${on?'rgba(229,62,62,0.2)':'rgba(255,255,255,0.05)'}`,transition:'all 0.15s'}}>
-                        <div style={{width:18,height:18,borderRadius:4,background:on?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${on?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                          {on&&<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
-                        </div>
-                        <span style={{fontSize:12,color:on?'#F9FAFB':'#9CA3AF',fontWeight:on?600:400}}>{MODULE_LABELS[mod]}</span>
-                      </label>
-                    )
-                  })}
-                </div>
+                <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:10}}>Permissões</label>
+                <PermChecklist perms={(editPermUser.permissions??{}) as Record<string,boolean>} onChange={(k,v)=>setEditPermUser(p=>p?{...p,permissions:{...p.permissions,[k]:v}}:p)}/>
               </div>
               <button onClick={()=>savePermissions(editPermUser)}
                 style={{padding:'12px',borderRadius:10,border:'none',fontSize:13,fontWeight:700,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',fontFamily:'Montserrat,sans-serif'}}>
@@ -2700,7 +2798,15 @@ export default function DropCRM() {
                         <div style={{fontSize:11,color:'#4B5563',marginTop:2}}>Para alterar a senha, use o painel de Administração.</div>
                       </div>
                     </div>
-                    <button onClick={()=>setOrgAccessModal(null)} style={{padding:'10px',borderRadius:8,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#9CA3AF',fontSize:13,cursor:'pointer',fontFamily:'Montserrat,sans-serif'}}>Fechar</button>
+                    <div style={{display:'flex',gap:8}}>
+                      <button onClick={()=>setOrgAccessModal(null)} style={{flex:1,padding:'10px',borderRadius:8,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#9CA3AF',fontSize:13,cursor:'pointer',fontFamily:'Montserrat,sans-serif'}}>Fechar</button>
+                      {currentUser?.role==='admin'&&(
+                        <button onClick={async()=>{if(confirm(`Remover ${member.name} da equipe?`)){await removeMember(member.id);setOrgAccessModal(null)}}}
+                          style={{flex:1,padding:'10px',borderRadius:8,border:'1px solid rgba(239,68,68,0.3)',background:'rgba(239,68,68,0.06)',color:'#EF4444',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'Montserrat,sans-serif'}}>
+                          🗑 Remover
+                        </button>
+                      )}
+                    </div>
                   </>
                 ):(
                   <>
@@ -2720,21 +2826,8 @@ export default function DropCRM() {
                       <input type="password" value={orgAccessForm.confirmPassword} onChange={e=>setOrgAccessForm(p=>({...p,confirmPassword:e.target.value}))} placeholder="••••••••" style={inpStyle}/>
                     </div>
                     <div>
-                      <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Módulos liberados</label>
-                      <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                        {ALL_MODULES.map(mod=>{
-                          const on = orgAccessForm.permissions[mod as keyof typeof orgAccessForm.permissions]
-                          return (
-                            <label key={mod} onClick={()=>setOrgAccessForm(p=>({...p,permissions:{...p.permissions,[mod]:!on}}))}
-                              style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'7px 10px',background:on?'rgba(229,62,62,0.06)':'rgba(255,255,255,0.02)',borderRadius:7,border:`1px solid ${on?'rgba(229,62,62,0.2)':'rgba(255,255,255,0.05)'}`,transition:'all 0.15s'}}>
-                              <div style={{width:16,height:16,borderRadius:3,background:on?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${on?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                                {on&&<svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
-                              </div>
-                              <span style={{fontSize:11,color:on?'#F9FAFB':'#9CA3AF',fontWeight:on?600:400}}>{MODULE_LABELS[mod]}</span>
-                            </label>
-                          )
-                        })}
-                      </div>
+                      <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Permissões</label>
+                      <PermChecklist perms={orgAccessForm.permissions as Record<string,boolean>} onChange={(k,v)=>setOrgAccessForm(p=>({...p,permissions:{...p.permissions,[k]:v}}))}/>
                     </div>
                     <button onClick={saveAccess} disabled={orgAccessSaving||!orgAccessForm.email.trim()||!orgAccessForm.password.trim()}
                       style={{padding:'11px',borderRadius:10,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',opacity:orgAccessSaving||!orgAccessForm.email.trim()||!orgAccessForm.password.trim()?0.5:1,fontFamily:'Montserrat,sans-serif'}}>
@@ -2842,17 +2935,8 @@ export default function DropCRM() {
                 </div>
               </div>
               <div>
-                <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Módulos liberados</label>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-                  {ALL_MODULES.map(mod=>(
-                    <label key={mod} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',padding:'6px 8px',background:'rgba(255,255,255,0.02)',borderRadius:6}}>
-                      <div onClick={()=>setNewUser(p=>({...p,permissions:{...p.permissions,[mod]:!(p.permissions as Record<string,boolean>)[mod]}}))} style={{width:16,height:16,borderRadius:3,background:(newUser.permissions as Record<string,boolean>)[mod]?'#E53E3E':'rgba(255,255,255,0.06)',border:`1px solid ${(newUser.permissions as Record<string,boolean>)[mod]?'#E53E3E':'rgba(255,255,255,0.12)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,cursor:'pointer'}}>
-                        {(newUser.permissions as Record<string,boolean>)[mod]&&<svg width="9" height="9" viewBox="0 0 9 9"><path d="M1.5 4.5l2 2L7.5 2" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>}
-                      </div>
-                      <span style={{fontSize:11,color:'#D1D5DB'}}>{MODULE_LABELS[mod]}</span>
-                    </label>
-                  ))}
-                </div>
+                <label style={{fontSize:10,fontWeight:600,color:'#4B5563',textTransform:'uppercase',letterSpacing:'0.12em',display:'block',marginBottom:8}}>Permissões</label>
+                <PermChecklist perms={newUser.permissions as Record<string,boolean>} onChange={(k,v)=>setNewUser(p=>({...p,permissions:{...p.permissions,[k]:v}}))}/>
               </div>
               <button onClick={createUser} disabled={savingUser||!newUser.name.trim()||!newUser.email.trim()||!newUser.password.trim()} style={{padding:'11px',borderRadius:10,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',opacity:savingUser||!newUser.name.trim()||!newUser.email.trim()||!newUser.password.trim()?0.4:1}}>
                 {savingUser?'Criando...' : 'Criar Usuário'}
