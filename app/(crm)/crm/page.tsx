@@ -2833,6 +2833,12 @@ export default function DropCRM() {
                       style={{padding:'11px',borderRadius:10,border:'none',fontSize:13,fontWeight:600,color:'#fff',cursor:'pointer',background:'linear-gradient(135deg,#E53E3E,#B91C1C)',opacity:orgAccessSaving||!orgAccessForm.email.trim()||!orgAccessForm.password.trim()?0.5:1,fontFamily:'Montserrat,sans-serif'}}>
                       {orgAccessSaving?'Criando acesso...':'Criar Acesso'}
                     </button>
+                    {currentUser?.role==='admin'&&(
+                      <button onClick={async()=>{if(confirm(`Remover ${member.name} da equipe?`)){await removeMember(member.id);setOrgAccessModal(null)}}}
+                        style={{padding:'10px',borderRadius:10,border:'1px solid rgba(239,68,68,0.3)',background:'transparent',color:'#EF4444',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'Montserrat,sans-serif'}}>
+                        🗑 Remover da equipe
+                      </button>
+                    )}
                   </>
                 )}
               </div>
