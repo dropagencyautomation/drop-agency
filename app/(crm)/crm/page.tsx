@@ -753,10 +753,8 @@ export default function DropCRM() {
       {/* SIDEBAR */}
       <aside style={{width:220,background:'rgba(5,5,5,0.88)',borderRight:'1px solid rgba(255,255,255,0.07)',display:'flex',flexDirection:'column',flexShrink:0,backdropFilter:'blur(20px)',position:'relative',zIndex:2}}>
         <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'center'}}>
-          <div style={{background:'#fff',borderRadius:10,padding:'6px 10px',boxShadow:'0 0 20px rgba(229,62,62,0.3)',width:168}}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="DROP AGENCY" style={{width:'100%',height:'auto',display:'block'}}/>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="DROP AGENCY" style={{width:172,height:'auto',display:'block',filter:'drop-shadow(0 0 12px rgba(229,62,62,0.4))'}}/>
         </div>
 
         <nav style={{flex:1,padding:'12px 10px',overflowY:'auto'}}>

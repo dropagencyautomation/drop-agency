@@ -63,10 +63,8 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
       {/* Logo */}
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--sidebar-border)' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-          <div style={{ background: '#fff', borderRadius: 10, padding: '6px 10px', boxShadow: '0 0 20px rgba(229,62,62,0.3)', width: 168 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="DROP AGENCY" style={{ width: '100%', height: 'auto', display: 'block' }} />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="DROP AGENCY" style={{ width: 172, height: 'auto', display: 'block', filter: 'drop-shadow(0 0 12px rgba(229,62,62,0.4))' }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
