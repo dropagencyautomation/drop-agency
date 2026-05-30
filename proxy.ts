@@ -23,10 +23,11 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login')
-  const isApiRoute  = request.nextUrl.pathname.startsWith('/api')
+  const isAuthRoute  = request.nextUrl.pathname.startsWith('/login')
+  const isApiRoute   = request.nextUrl.pathname.startsWith('/api')
+  const isStaticFile = /\.(png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|otf|pdf|txt|xml)$/i.test(request.nextUrl.pathname)
 
-  if (!user && !isAuthRoute && !isApiRoute) {
+  if (!user && !isAuthRoute && !isApiRoute && !isStaticFile) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
