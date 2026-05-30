@@ -1454,7 +1454,10 @@ export default function DropCRM() {
                         onMouseEnter={e=>{ if(currentUser?.role==='admin') e.currentTarget.style.borderColor='rgba(229,62,62,0.3)' }}
                         onMouseLeave={e=>{ e.currentTarget.style.borderColor='rgba(255,255,255,0.07)' }}>
                         <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-                          <div style={{width:44,height:44,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:700,color:'#fff',flexShrink:0,boxShadow:`0 0 16px ${m.avatar_color}40`}}>{m.name.split(' ').map((w:string)=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+                          {mProfile?.avatar_url
+                            ?<img src={mProfile.avatar_url} alt={m.name} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0,boxShadow:`0 0 16px ${m.avatar_color}40`,border:`2px solid ${m.avatar_color}60`}}/>
+                            :<div style={{width:44,height:44,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:700,color:'#fff',flexShrink:0,boxShadow:`0 0 16px ${m.avatar_color}40`}}>{m.name.split(' ').map((w:string)=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+                          }
                           <div style={{flex:1}}>
                             <div style={{fontSize:14,fontWeight:600,color:'#F9FAFB'}}>{m.name}</div>
                             <div style={{fontSize:11,color:'#6B7280'}}>{m.role}</div>
@@ -1510,7 +1513,10 @@ export default function DropCRM() {
                     const xp=memberXP.find(x=>x.member_id===m.id)
                     return (
                       <div key={m.id} style={{background:'rgba(10,10,10,0.75)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,padding:'16px 20px',backdropFilter:'blur(12px)',display:'flex',alignItems:'center',gap:16}}>
-                        <div style={{width:40,height:40,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:'#fff',flexShrink:0}}>{m.name.split(' ').map((w:string)=>w[0]).join('').slice(0,2)}</div>
+                        {(()=>{const p=userProfiles.find(up=>up.member_id===m.id); return p?.avatar_url
+                          ?<img src={p.avatar_url} alt={m.name} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:`2px solid ${m.avatar_color}60`}}/>
+                          :<div style={{width:40,height:40,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:'#fff',flexShrink:0}}>{m.name.split(' ').map((w:string)=>w[0]).join('').slice(0,2)}</div>
+                        })()}
                         <div style={{flex:1}}>
                           <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                             <div>
@@ -1546,7 +1552,10 @@ export default function DropCRM() {
                 const isComercial = (role:string) => /comercial|vend|closer|sdr|account|prospect/i.test(role)
                 const isAdmDept  = (role:string) => /financ|rh|recursos|jurídico|contab|secretar|administrativ/i.test(role)
                 const deptOf = (m:TeamMember) => isComercial(m.role)?'comercial':isAdmDept(m.role)?'administrativo':'operacional'
-                const byDept = (dept:string) => members.filter(m=>deptOf(m)===dept)
+                const byDept = (dept:string) => members.filter(m=>{
+                  if(getProfile(m.id)?.role==='admin') return false
+                  return deptOf(m)===dept
+                })
                 const MAX_CAP = 8
 
                 const hireNeed = (dept:string) => {
@@ -1576,9 +1585,10 @@ export default function DropCRM() {
                     <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
                       <div style={{background:'rgba(12,12,12,0.95)',border:'1px solid rgba(229,62,62,0.35)',borderRadius:14,padding:'16px 24px',backdropFilter:'blur(16px)',display:'flex',alignItems:'center',gap:14,position:'relative',boxShadow:'0 0 32px rgba(229,62,62,0.12)'}}>
                         <div style={{position:'absolute',top:-10,right:14,background:'rgba(229,62,62,0.15)',border:'1px solid rgba(229,62,62,0.3)',borderRadius:999,padding:'2px 9px',fontSize:9,fontWeight:700,color:'#E53E3E',letterSpacing:'0.1em'}}>1 colaborador</div>
-                        <div style={{width:46,height:46,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#991B1B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:800,color:'#fff',boxShadow:'0 0 18px rgba(229,62,62,0.45)',flexShrink:0}}>
-                          {ceoName.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}
-                        </div>
+                        {currentUser?.avatar_url
+                          ?<img src={currentUser.avatar_url} alt={ceoName} style={{width:46,height:46,borderRadius:'50%',objectFit:'cover',flexShrink:0,boxShadow:'0 0 18px rgba(229,62,62,0.45)',border:'2px solid rgba(229,62,62,0.5)'}}/>
+                          :<div style={{width:46,height:46,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#991B1B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:800,color:'#fff',boxShadow:'0 0 18px rgba(229,62,62,0.45)',flexShrink:0}}>{ceoName.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}</div>
+                        }
                         <div>
                           <div style={{fontSize:13,fontWeight:700,color:'#F9FAFB',marginBottom:1}}>👑 {ceoName}</div>
                           <div style={{fontSize:11,color:'#E53E3E',fontWeight:600}}>Fundadora & CEO</div>
@@ -1631,9 +1641,10 @@ export default function DropCRM() {
                               {/* Camila como responsável se dept vazio */}
                               {isCamilaResp&&mbs.length===0&&(
                                 <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'rgba(229,62,62,0.05)',border:'1px solid rgba(229,62,62,0.15)',borderRadius:10}}>
-                                  <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#991B1B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:'#fff',flexShrink:0}}>
-                                    {ceoName.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}
-                                  </div>
+                                  {currentUser?.avatar_url
+                                    ?<img src={currentUser.avatar_url} alt={ceoName} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:'2px solid rgba(229,62,62,0.4)'}}/>
+                                    :<div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#E53E3E,#991B1B)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:'#fff',flexShrink:0}}>{ceoName.split(' ').slice(0,2).map((w:string)=>w[0]).join('').toUpperCase()}</div>
+                                  }
                                   <div style={{flex:1}}>
                                     <div style={{fontSize:12,fontWeight:600,color:'#F9FAFB'}}>{ceoName}</div>
                                     <div style={{fontSize:10,color:'#E53E3E'}}>Responsável atual</div>
@@ -1653,9 +1664,10 @@ export default function DropCRM() {
                                     style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:10,transition:'all 0.15s',cursor:canEditPerm?'pointer':'default'}}
                                     onMouseEnter={e=>{e.currentTarget.style.borderColor=canEditPerm?'rgba(229,62,62,0.3)':'rgba(255,255,255,0.14)';if(canEditPerm)e.currentTarget.style.background='rgba(229,62,62,0.04)'}}
                                     onMouseLeave={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,0.06)';e.currentTarget.style.background='rgba(255,255,255,0.02)'}}>
-                                    <div style={{width:36,height:36,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:'#fff',flexShrink:0,boxShadow:`0 0 12px ${m.avatar_color}35`}}>
-                                      {avatarInitials(m.name)}
-                                    </div>
+                                    {profile?.avatar_url
+                                      ?<img src={profile.avatar_url} alt={m.name} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:`2px solid ${m.avatar_color}50`}}/>
+                                      :<div style={{width:36,height:36,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:'#fff',flexShrink:0,boxShadow:`0 0 12px ${m.avatar_color}35`}}>{avatarInitials(m.name)}</div>
+                                    }
                                     <div style={{flex:1,minWidth:0}}>
                                       <div style={{fontSize:12,fontWeight:600,color:'#F9FAFB',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{fmtName(m.name)}</div>
                                       <div style={{fontSize:10,color:'#6B7280'}}>{m.role||'Colaborador'}</div>
@@ -1713,7 +1725,10 @@ export default function DropCRM() {
                       return (
                         <div key={m.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 20px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
                           <div style={{width:24,height:24,borderRadius:'50%',background:rank<3?rankColors[rank]:'rgba(255,255,255,0.05)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:rank<3?'#000':'#6B7280',flexShrink:0}}>{rank+1}</div>
-                          <div style={{width:36,height:36,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#fff',flexShrink:0}}>{m.name.split(' ').map((w:string)=>w[0]).join('').slice(0,2)}</div>
+                          {(()=>{const p=userProfiles.find(up=>up.member_id===m.id); return p?.avatar_url
+                            ?<img src={p.avatar_url} alt={m.name} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:`2px solid ${m.avatar_color}60`}}/>
+                            :<div style={{width:36,height:36,borderRadius:'50%',background:m.avatar_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#fff',flexShrink:0}}>{m.name.split(' ').map((w:string)=>w[0]).join('').slice(0,2)}</div>
+                          })()}
                           <div style={{flex:1}}>
                             <div style={{fontSize:13,fontWeight:600,color:'#F9FAFB',marginBottom:2}}>{m.name}</div>
                             <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:999}}><div style={{height:'100%',width:`${prog}%`,background:m.avatar_color,borderRadius:999}}/></div>
@@ -2038,7 +2053,10 @@ export default function DropCRM() {
                     <div style={{padding:'14px 20px',borderBottom:'1px solid rgba(255,255,255,0.06)',fontSize:13,fontWeight:600,color:'#F9FAFB'}}>Selecione o usuário</div>
                     {userProfiles.map(u=>(
                       <div key={u.id} onClick={()=>setEditPermUser({...u})} style={{display:'flex',alignItems:'center',gap:10,padding:'12px 20px',borderBottom:'1px solid rgba(255,255,255,0.04)',cursor:'pointer',background:editPermUser?.id===u.id?'rgba(229,62,62,0.08)':'transparent',transition:'background 0.15s'}}>
-                        <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(229,62,62,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#E53E3E'}}>{u.name.slice(0,2).toUpperCase()}</div>
+                        {u.avatar_url
+                          ?<img src={u.avatar_url} alt={u.name} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                          :<div style={{width:32,height:32,borderRadius:'50%',background:'rgba(229,62,62,0.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#E53E3E'}}>{u.name.slice(0,2).toUpperCase()}</div>
+                        }
                         <div style={{flex:1}}>
                           <div style={{fontSize:13,fontWeight:500,color:'#F9FAFB'}}>{u.name}</div>
                           <div style={{fontSize:10,color:'#6B7280'}}>{u.role}</div>
