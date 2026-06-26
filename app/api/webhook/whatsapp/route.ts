@@ -35,6 +35,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    // Whitelist de números permitidos
+    const ALLOWED_NUMBERS = ['5511994800080', '554187490574', '5511989869931']
+    if (!ALLOWED_NUMBERS.includes(phone)) return NextResponse.json({ ok: true })
+
     const supabase = await createServiceClient()
 
     // Busca ou cria conversa (limit(1) evita erro de múltiplas linhas)
