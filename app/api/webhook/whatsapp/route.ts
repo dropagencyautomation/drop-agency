@@ -74,8 +74,17 @@ export async function POST(req: NextRequest) {
 
     if (!conversation) return NextResponse.json({ ok: true })
 
-    // Se humano assumiu manualmente pelo CRM, não responde
-    if (conversation.human_takeover) return NextResponse.json({ ok: true })
+    // NOTA: durante esta fase o bot responde a TODAS as mensagens.
+    // A trava de human_takeover foi desativada de propósito. Para reativar o
+    // handoff manual pelo CRM no futuro, basta descomentar a linha abaixo:
+    // if (conversation.human_takeover) return NextResponse.json({ ok: true })
+    if (conversation.human_takeover) {
+      // Lead voltou a falar: reativa o bot para garantir continuidade
+      await supabase.from('ai_conversations')
+        .update({ human_takeover: false })
+        .eq('id', conversation.id)
+      conversation.human_takeover = false
+    }
 
     // Fora do horário comercial: avisa e encerra
     const inHours = await isWithinBusinessHours()
