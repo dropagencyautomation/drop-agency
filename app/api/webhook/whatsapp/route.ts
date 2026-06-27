@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 import { createServiceClient } from '@/lib/supabase/server'
 import { processMessage } from '@/lib/openai/agent'
-import { sendText, isWithinBusinessHours, notifyHandoff } from '@/lib/uazapi/client'
+import { sendText, sendSplitText, isWithinBusinessHours, notifyHandoff } from '@/lib/uazapi/client'
 import type { AiConversation } from '@/types/database'
 
 export async function POST(req: NextRequest) {
@@ -177,8 +177,8 @@ export async function POST(req: NextRequest) {
       last_interaction_at: new Date().toISOString(),
     }).eq('id', conversation.lead_id)
 
-    // Envia resposta
-    await sendText(phone, reply)
+    // Envia resposta em blocos separados
+    await sendSplitText(phone, reply)
 
     // Se handoff: avança lead no kanban + notifica Camila (o bot continua respondendo)
     if (shouldHandoff) {

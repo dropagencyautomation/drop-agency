@@ -23,6 +23,19 @@ export async function sendText(phone: string, text: string) {
   })
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+export async function sendSplitText(phone: string, text: string) {
+  const blocks = text.split(/\n+/).map(b => b.trim()).filter(Boolean)
+  if (blocks.length === 0) return
+  for (let i = 0; i < blocks.length; i++) {
+    const delay = Math.max(800, Math.min(blocks[i].length * 125, 3000))
+    await sleep(delay)
+    await sendText(phone, blocks[i])
+    if (i < blocks.length - 1) await sleep(400)
+  }
+}
+
 export async function isWithinBusinessHours(): Promise<boolean> {
   const start = Number(process.env.BUSINESS_HOURS_START ?? 8)
   const end   = Number(process.env.BUSINESS_HOURS_END   ?? 19)
