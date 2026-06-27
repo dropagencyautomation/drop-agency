@@ -12,14 +12,20 @@ export async function POST(req: NextRequest) {
 
     console.log('[WEBHOOK] payload recebido:', JSON.stringify(body))
 
+    // uazapi v2 aninha a mensagem em body.message; aceita também payload achatado
+    const msg = body.message ?? body.data ?? body
+
     // Ignora mensagens enviadas pelo próprio número (fromMe)
-    if (body.fromMe) return NextResponse.json({ ok: true })
+    if (msg.fromMe ?? body.fromMe) return NextResponse.json({ ok: true })
 
-    const rawPhone = body.from ?? body.sender ?? body.chatid ?? ''
-    const phone    = rawPhone.replace('@s.whatsapp.net', '').replace('@c.us', '')
-    const message  = body.body ?? body.message ?? body.text ?? ''
+    const rawPhone = msg.sender ?? msg.chatid ?? msg.from ?? body.from ?? ''
+    const phone    = String(rawPhone).replace('@s.whatsapp.net', '').replace('@c.us', '')
+    const message  = msg.text ?? msg.body ?? msg.content?.text ?? body.text ?? ''
 
-    if (!phone || !message) return NextResponse.json({ ok: true })
+    if (!phone || !message) {
+      console.log('[WEBHOOK] ignorado — phone ou message vazio. phone:', phone, 'message:', message)
+      return NextResponse.json({ ok: true })
+    }
 
     const supabase = await createServiceClient()
 
