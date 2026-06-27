@@ -13,8 +13,9 @@ export async function POST(req: NextRequest) {
     // Ignora mensagens enviadas pelo próprio número (fromMe)
     if (body.fromMe) return NextResponse.json({ ok: true })
 
-    const phone   = body.from?.replace('@s.whatsapp.net', '').replace('@c.us', '')
-    const message = body.body ?? body.message ?? ''
+    const rawPhone = body.from ?? body.sender ?? body.chatid ?? ''
+    const phone    = rawPhone.replace('@s.whatsapp.net', '').replace('@c.us', '')
+    const message  = body.body ?? body.message ?? body.text ?? ''
 
     if (!phone || !message) return NextResponse.json({ ok: true })
 
