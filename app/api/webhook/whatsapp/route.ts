@@ -12,6 +12,14 @@ export async function POST(req: NextRequest) {
 
     console.log('[WEBHOOK] payload recebido:', JSON.stringify(body))
 
+    // Recebe todos os eventos, mas a IA só responde a mensagens novas.
+    // Ignora eventos que não sejam de mensagem (connection, presence, history, etc).
+    const eventType = body.EventType ?? body.event ?? body.type
+    if (eventType && String(eventType).toLowerCase() !== 'messages') {
+      console.log('[WEBHOOK] evento ignorado (nao e mensagem):', eventType)
+      return NextResponse.json({ ok: true })
+    }
+
     // uazapi v2 aninha a mensagem em body.message; aceita também payload achatado
     const msg = body.message ?? body.data ?? body
 
