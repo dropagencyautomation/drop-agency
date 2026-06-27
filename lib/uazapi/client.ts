@@ -8,7 +8,7 @@ async function request(path: string, body?: object) {
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      Authorization: TOKEN,
+      'token': TOKEN,
     },
     body: JSON.stringify(body),
   })
