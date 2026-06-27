@@ -10,6 +10,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
+    console.log('[WEBHOOK] payload recebido:', JSON.stringify(body))
+
     // Ignora mensagens enviadas pelo próprio número (fromMe)
     if (body.fromMe) return NextResponse.json({ ok: true })
 
