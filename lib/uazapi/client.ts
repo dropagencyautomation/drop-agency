@@ -7,6 +7,7 @@ async function request(path: string, body?: object) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       Authorization: TOKEN,
     },
     body: JSON.stringify(body),
@@ -16,7 +17,7 @@ async function request(path: string, body?: object) {
 }
 
 export async function sendText(phone: string, text: string) {
-  return request(`/message/sendText/${INSTANCE}`, {
+  return request('/send/text', {
     number: phone,
     text,
   })
