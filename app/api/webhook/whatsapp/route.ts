@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 import { createServiceClient } from '@/lib/supabase/server'
 import { processMessage, computeLeadScore } from '@/lib/openai/agent'
-import { sendText, sendSplitText, isWithinBusinessHours, notifyHandoff } from '@/lib/uazapi/client'
+import { sendSplitText, notifyHandoff } from '@/lib/uazapi/client'
 import type { AiConversation, QualificationData } from '@/types/database'
 
 const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
@@ -60,18 +60,27 @@ export async function POST(req: NextRequest) {
     // Ignora mensagens enviadas pelo próprio número (fromMe)
     if (msg.fromMe ?? body.fromMe) return NextResponse.json({ ok: true })
 
-    const rawPhone = msg.sender ?? msg.chatid ?? msg.from ?? body.from ?? ''
-    const phone    = String(rawPhone).replace('@s.whatsapp.net', '').replace('@c.us', '')
-    const message  = msg.text ?? msg.body ?? msg.content?.text ?? body.text ?? ''
+    // wa_chatid é o identificador do chat no formato NUMERO@s.whatsapp.net
+    const rawChatId = body.wa_chatid ?? msg.wa_chatid ?? msg.chatid ?? msg.sender ?? msg.from ?? body.from ?? ''
+    const phone     = String(rawChatId).replace('@s.whatsapp.net', '').replace('@c.us', '')
+    const waChatId  = phone ? `${phone}@s.whatsapp.net` : ''
+    const message   = msg.text ?? msg.body ?? msg.content?.text ?? body.text ?? ''
 
     if (!phone || !message) {
       console.log('[WEBHOOK] ignorado — phone ou message vazio. phone:', phone, 'message:', message)
       return NextResponse.json({ ok: true })
     }
 
-    // Whitelist de números permitidos
-    const ALLOWED_NUMBERS = ['5511994800080', '554187490574', '5511989869931']
-    if (!ALLOWED_NUMBERS.includes(phone)) return NextResponse.json({ ok: true })
+    // Whitelist de números permitidos, no formato NUMERO@s.whatsapp.net
+    const ALLOWED_CHATIDS = [
+      '5511994800080@s.whatsapp.net',
+      '554187490574@s.whatsapp.net',
+      '5511989869931@s.whatsapp.net',
+    ]
+    if (!ALLOWED_CHATIDS.includes(waChatId)) {
+      console.log('[WEBHOOK] ignorado — wa_chatid nao permitido:', waChatId)
+      return NextResponse.json({ ok: true })
+    }
 
     const supabase = await createServiceClient()
 
@@ -122,16 +131,6 @@ export async function POST(req: NextRequest) {
         .update({ human_takeover: false })
         .eq('id', conversation.id)
       conversation.human_takeover = false
-    }
-
-    // Fora do horário comercial: avisa e encerra
-    const inHours = await isWithinBusinessHours()
-    if (!inHours) {
-      await sendText(
-        phone,
-        'Olá! Nosso atendimento funciona de segunda a sexta, das 8h às 19h. Retorno em breve 😊'
-      )
-      return NextResponse.json({ ok: true })
     }
 
     // ── Registra a mensagem do lead no histórico imediatamente ──

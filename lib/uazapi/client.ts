@@ -30,23 +30,67 @@ export async function sendText(phone: string, text: string) {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-export async function sendSplitText(phone: string, text: string) {
-  const blocks = text.split(/\n+/).map(b => b.trim()).filter(Boolean)
-  if (blocks.length === 0) return
-  for (let i = 0; i < blocks.length; i++) {
-    const delay = Math.max(800, Math.min(blocks[i].length * 125, 3000))
-    await sleep(delay)
-    await sendText(phone, blocks[i])
-    if (i < blocks.length - 1) await sleep(400)
-  }
+// Tamanho máximo aproximado de um bloco antes de quebrarmos em frases.
+const MAX_BLOCK_LENGTH = 220
+
+// Delay aleatório entre 2 e 3 segundos, aplicado entre um bloco e o próximo.
+function getRandomBlockDelay(): number {
+  return Math.floor(Math.random() * (3000 - 2000 + 1)) + 2000
 }
 
-export async function isWithinBusinessHours(): Promise<boolean> {
-  const start = Number(process.env.BUSINESS_HOURS_START ?? 8)
-  const end   = Number(process.env.BUSINESS_HOURS_END   ?? 19)
-  const now   = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
-  const hour  = now.getHours()
-  return hour >= start && hour < end
+/**
+ * Quebra a resposta da IA em blocos menores, mantendo o sentido de cada bloco.
+ * - Respeita as quebras de linha que a própria IA já sinalizou (parágrafos).
+ * - Nunca corta uma frase no meio: parágrafos longos são divididos por
+ *   pontuação (. ! ? …), agrupando frases inteiras até o limite de tamanho.
+ */
+export function splitIntoBlocks(text: string): string[] {
+  const paragraphs = text.split(/\n+/).map(p => p.trim()).filter(Boolean)
+
+  const blocks: string[] = []
+  for (const paragraph of paragraphs) {
+    if (paragraph.length <= MAX_BLOCK_LENGTH) {
+      blocks.push(paragraph)
+      continue
+    }
+
+    // Extrai frases inteiras (cada frase termina em pontuação ou no fim do texto).
+    const sentences =
+      paragraph.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g)?.map(s => s.trim()).filter(Boolean) ??
+      [paragraph]
+
+    let current = ''
+    for (const sentence of sentences) {
+      if (current && current.length + sentence.length + 1 > MAX_BLOCK_LENGTH) {
+        blocks.push(current.trim())
+        current = sentence
+      } else {
+        current = current ? `${current} ${sentence}` : sentence
+      }
+    }
+    if (current.trim()) blocks.push(current.trim())
+  }
+
+  return blocks
+}
+
+/**
+ * Envia a resposta da IA em blocos separados, simulando uma conversa natural
+ * no WhatsApp: envia um bloco, aguarda um tempo aleatório entre 2 e 3 segundos
+ * e então envia o próximo, até terminar todos os blocos.
+ */
+export async function sendSplitText(phone: string, text: string) {
+  const blocks = splitIntoBlocks(text)
+  if (blocks.length === 0) return
+
+  for (let i = 0; i < blocks.length; i++) {
+    await sendText(phone, blocks[i])
+
+    // Entre um bloco e o próximo, espera aleatória de 2 a 3 segundos.
+    if (i < blocks.length - 1) {
+      await sleep(getRandomBlockDelay())
+    }
+  }
 }
 
 export async function notifyHandoff(leadPhone: string, leadName: string, summary: string) {
