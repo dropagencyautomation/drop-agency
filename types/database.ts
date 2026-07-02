@@ -85,7 +85,9 @@ export interface Interaction {
 }
 
 export interface QualificationData {
+  name?: string
   niche?: string
+  service_type?: ServiceType
   desired_service?: string
   main_objective?: string
   urgency?: Urgency
@@ -96,6 +98,7 @@ export interface QualificationData {
   main_pains?: string
   growth_goals?: string
   estimated_budget?: string
+  strategic_openness?: boolean
 }
 
 export interface AiConversation {

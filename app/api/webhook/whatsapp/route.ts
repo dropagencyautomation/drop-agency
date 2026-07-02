@@ -2,9 +2,43 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 import { createServiceClient } from '@/lib/supabase/server'
-import { processMessage } from '@/lib/openai/agent'
+import { processMessage, computeLeadScore } from '@/lib/openai/agent'
 import { sendText, sendSplitText, isWithinBusinessHours, notifyHandoff } from '@/lib/uazapi/client'
-import type { AiConversation } from '@/types/database'
+import type { AiConversation, QualificationData } from '@/types/database'
+
+const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
+  'niche',
+  'service_type',
+  'desired_service',
+  'main_objective',
+  'urgency',
+  'revenue_range',
+  'team_size',
+  'digital_maturity',
+  'has_marketing',
+  'main_pains',
+  'growth_goals',
+  'estimated_budget',
+]
+
+function buildHandoffSummary(
+  leadName: string,
+  q: QualificationData,
+  score: number,
+  nextStep: string
+): string {
+  const na = 'não informado'
+  return [
+    `• Nome: ${leadName}`,
+    `• Nicho: ${q.niche ?? na}`,
+    `• Serviço de interesse: ${q.desired_service ?? q.service_type ?? na}`,
+    `• Faturamento: ${q.revenue_range ?? na}`,
+    `• Dor principal: ${q.main_pains ?? na}`,
+    `• Urgência: ${q.urgency ?? na}`,
+    `• Próximo passo: ${nextStep}`,
+    `• Score: ${score}`,
+  ].join('\n')
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -176,37 +210,40 @@ export async function POST(req: NextRequest) {
       ai_generated: true,
     })
 
-    // Atualiza last_interaction_at do lead
-    await supabase.from('leads').update({
+    // Persiste os dados qualificados direto no lead, conforme a conversa avança
+    const { score, profile } = computeLeadScore(updatedQualification)
+    const leadUpdate: Record<string, unknown> = {
       last_interaction_at: new Date().toISOString(),
-    }).eq('id', conversation.lead_id)
+      score,
+      profile,
+    }
+    if (updatedQualification.name) leadUpdate.name = updatedQualification.name
+    for (const key of LEAD_FIELD_KEYS) {
+      if (updatedQualification[key] !== undefined) leadUpdate[key] = updatedQualification[key]
+    }
+
+    await supabase.from('leads').update(leadUpdate).eq('id', conversation.lead_id)
 
     // Envia resposta em blocos separados
     await sendSplitText(phone, reply)
 
-    // Se handoff: avança lead no kanban + notifica Camila (o bot continua respondendo)
+    // Se handoff: avança lead no kanban + notifica Camila com resumo completo
     if (shouldHandoff) {
-      // Busca dados do lead para a notificação
       const { data: lead } = await supabase
         .from('leads')
-        .select('name, phone, niche, desired_service, revenue_range, urgency')
+        .select('name, phone')
         .eq('id', conversation.lead_id)
         .single()
 
       await supabase.from('leads').update({ stage_id: 2 }).eq('id', conversation.lead_id)
 
-      // Monta resumo com dados coletados
-      const q = updatedQualification ?? {}
-      const lines: string[] = []
-      if (q.niche)           lines.push(`• Nicho: ${q.niche}`)
-      if (q.desired_service) lines.push(`• Serviço: ${q.desired_service}`)
-      if (q.revenue_range)   lines.push(`• Faturamento: ${q.revenue_range}`)
-      if (q.urgency)         lines.push(`• Urgência: ${q.urgency}`)
-      if (q.main_pains)      lines.push(`• Dores: ${q.main_pains}`)
-      if (q.estimated_budget)lines.push(`• Budget estimado: ${q.estimated_budget}`)
-      const summary = lines.length > 0 ? lines.join('\n') : 'Sem dados coletados ainda.'
+      const leadName = updatedQualification.name ?? lead?.name ?? phone
+      const nextStep =
+        updatedQualification.service_type === 'recorrente'
+          ? 'sessão estratégica com a Camila'
+          : 'continuar atendimento humano'
+      const summary = buildHandoffSummary(leadName, updatedQualification, score, nextStep)
 
-      const leadName = lead?.name ?? phone
       await notifyHandoff(phone, leadName, summary)
     }
 

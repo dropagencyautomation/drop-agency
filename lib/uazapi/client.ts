@@ -16,10 +16,15 @@ async function request(path: string, body?: object) {
   return res.json()
 }
 
+export function getRandomTypingDelay(): number {
+  return Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000
+}
+
 export async function sendText(phone: string, text: string) {
   return request('/send/text', {
     number: phone,
     text,
+    delay: getRandomTypingDelay(),
   })
 }
 
