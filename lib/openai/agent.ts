@@ -224,6 +224,25 @@ Campos:
 
 Responda em JSON puro, sem comentários.`
 
+const SUMMARY_SYSTEM_PROMPT = `Você resume, em UMA ÚNICA FRASE curta e direta, quem é o lead de uma conversa comercial de WhatsApp com a Drop Agency.
+
+Baseie-se na conversa e nos dados já qualificados. Foque em: tipo de negócio/nicho, principal dificuldade ou objetivo, e contexto relevante para quem for continuar o atendimento.
+
+Responda em texto puro, uma frase só, sem aspas, sem prefixo como "Resumo:". Se não houver informação suficiente ainda, responda com uma frase curta descrevendo o que já se sabe (ex: "Lead ainda não informou o segmento do negócio").`
+
+const GUIDANCE_SYSTEM_PROMPT = `Você prepara um briefing curto para a Camila, consultora humana da Drop Agency, que vai continuar o atendimento de um lead que a IA (Carol) acabou de qualificar via WhatsApp.
+
+Releia a conversa inteira e escreva um parágrafo (não uma lista) cobrindo, quando a informação existir:
+- Personalidade e forma de se comunicar do lead (direto, informal, técnico, receoso, etc.)
+- Nome do lead, se identificado
+- Nicho ou segmento do negócio
+- Principais dores ou dificuldades relatadas
+- Nível de interesse demonstrado
+- Dados pessoais ou comerciais relevantes entendidos na conversa
+- Recomendação de abordagem: como a Camila deve continuar a conversa
+
+Não invente informação que não apareceu na conversa. Se faltar algo, simplesmente não mencione. Responda em texto corrido, em português, sem títulos ou marcadores.`
+
 function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 }
@@ -270,6 +289,62 @@ function mergeQualificationData(
     ;(merged as Record<string, unknown>)[key] = value
   }
   return merged
+}
+
+function buildTranscript(
+  history: AiConversation['conversation_history'],
+  qualification: QualificationData
+): string {
+  const conversationText = history
+    .map((m) => `${m.role === 'user' ? 'Lead' : 'Carol'}: ${m.content}`)
+    .join('\n')
+  const qualificationText = Object.entries(qualification)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n')
+  return `Conversa:\n${conversationText}\n\nDados já qualificados:\n${qualificationText || '(nenhum ainda)'}`
+}
+
+export async function generateLeadSummary(
+  history: AiConversation['conversation_history'],
+  qualification: QualificationData
+): Promise<string> {
+  const openai = getOpenAI()
+  try {
+    const completion = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
+        { role: 'user', content: buildTranscript(history, qualification) },
+      ],
+      temperature: 0.3,
+      max_tokens: 100,
+    })
+    return completion.choices[0].message.content?.trim() ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export async function generateHandoffGuidance(
+  history: AiConversation['conversation_history'],
+  qualification: QualificationData
+): Promise<string> {
+  const openai = getOpenAI()
+  try {
+    const completion = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: 'system', content: GUIDANCE_SYSTEM_PROMPT },
+        { role: 'user', content: buildTranscript(history, qualification) },
+      ],
+      temperature: 0.3,
+      max_tokens: 400,
+    })
+    return completion.choices[0].message.content?.trim() ?? ''
+  } catch {
+    return ''
+  }
 }
 
 const REVENUE_SCORE: Record<string, number> = {
