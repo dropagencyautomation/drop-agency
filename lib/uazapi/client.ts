@@ -39,6 +39,14 @@ function getRandomBlockDelay(): number {
 }
 
 /**
+ * Remove o ponto final simples do fim de um bloco, sem afetar "!", "?",
+ * "…" (elipse unicode) ou "..." (sequência de pontos, ex: fim de "...").
+ */
+export function stripTrailingPeriod(block: string): string {
+  return block.replace(/(?<!\.)\.$/, '')
+}
+
+/**
  * Quebra a resposta da IA em blocos menores, mantendo o sentido de cada bloco.
  * - Respeita as quebras de linha que a própria IA já sinalizou (parágrafos).
  * - Nunca corta uma frase no meio: parágrafos longos são divididos por
@@ -71,7 +79,7 @@ export function splitIntoBlocks(text: string): string[] {
     if (current.trim()) blocks.push(current.trim())
   }
 
-  return blocks
+  return blocks.map(stripTrailingPeriod)
 }
 
 /**
