@@ -42,6 +42,7 @@ export interface Lead {
   main_pains: string | null
   growth_goals: string | null
   estimated_budget: string | null
+  summary: string | null
   source: LeadSource | null
   profile: LeadProfile | null
   score: number
