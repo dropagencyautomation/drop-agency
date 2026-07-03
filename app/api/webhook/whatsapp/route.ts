@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { createServiceClient } from '@/lib/supabase/server'
 import { processMessage, computeLeadScore } from '@/lib/openai/agent'
 import { sendSplitText, notifyHandoff } from '@/lib/uazapi/client'
+import { getRedis } from '@/lib/redis/client'
 import type { AiConversation, QualificationData } from '@/types/database'
 
 const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
@@ -57,17 +58,15 @@ export async function POST(req: NextRequest) {
     // uazapi v2 aninha a mensagem em body.message; aceita também payload achatado
     const msg = body.message ?? body.data ?? body
 
-    // Ignora mensagens enviadas pelo próprio número (fromMe)
-    if (msg.fromMe ?? body.fromMe) return NextResponse.json({ ok: true })
-
     // wa_chatid é o identificador do chat no formato NUMERO@s.whatsapp.net
     const rawChatId = body.wa_chatid ?? msg.wa_chatid ?? msg.chatid ?? msg.sender ?? msg.from ?? body.from ?? ''
     const phone     = String(rawChatId).replace('@s.whatsapp.net', '').replace('@c.us', '')
     const waChatId  = phone ? `${phone}@s.whatsapp.net` : ''
     const message   = msg.text ?? msg.body ?? msg.content?.text ?? body.text ?? ''
+    const isFromMe  = Boolean(msg.fromMe ?? body.fromMe)
 
-    if (!phone || !message) {
-      console.log('[WEBHOOK] ignorado — phone ou message vazio. phone:', phone, 'message:', message)
+    if (!phone) {
+      console.log('[WEBHOOK] ignorado — phone vazio')
       return NextResponse.json({ ok: true })
     }
 
@@ -121,16 +120,34 @@ export async function POST(req: NextRequest) {
 
     if (!conversation) return NextResponse.json({ ok: true })
 
-    // NOTA: durante esta fase o bot responde a TODAS as mensagens.
-    // A trava de human_takeover foi desativada de propósito. Para reativar o
-    // handoff manual pelo CRM no futuro, basta descomentar a linha abaixo:
-    // if (conversation.human_takeover) return NextResponse.json({ ok: true })
-    if (conversation.human_takeover) {
-      // Lead voltou a falar: reativa o bot para garantir continuidade
-      await supabase.from('ai_conversations')
-        .update({ human_takeover: false })
-        .eq('id', conversation.id)
-      conversation.human_takeover = false
+    // ── fromMe: pode ser eco do próprio bot ou um humano respondendo manual ──
+    if (isFromMe) {
+      const redis = getRedis()
+      const isBotEcho = await redis.exists(`bot:sending:${phone}`)
+
+      if (!isBotEcho) {
+        // Humano de verdade assumiu a conversa: trava a IA por 15 minutos,
+        // renovado a cada nova mensagem humana (não por mensagens do lead).
+        await redis.set(`human_lock:${phone}`, '1', 'EX', 900)
+
+        if (message) {
+          const ts = new Date().toISOString()
+          await supabase.from('ai_conversations').update({
+            conversation_history: [
+              ...(conversation.conversation_history ?? []),
+              { role: 'assistant', content: message, timestamp: ts },
+            ],
+            updated_at: ts,
+          }).eq('id', conversation.id)
+        }
+      }
+
+      return NextResponse.json({ ok: true })
+    }
+
+    if (!message) {
+      console.log('[WEBHOOK] ignorado — message vazio. phone:', phone)
+      return NextResponse.json({ ok: true })
     }
 
     // ── Registra a mensagem do lead no histórico imediatamente ──
@@ -151,9 +168,26 @@ export async function POST(req: NextRequest) {
       content: message,
     })
 
-    // ── Debounce: espera 5s. Se chegar mensagem mais nova, esta invocação sai
-    //    e deixa a invocação da última mensagem responder a tudo de uma vez. ──
-    await new Promise((r) => setTimeout(r, 5000))
+    // ── Se um humano assumiu a conversa manualmente, a IA não responde ──
+    // enquanto o lock estiver ativo (15 minutos, renovado a cada mensagem humana).
+    const redis = getRedis()
+    const isHumanLocked = await redis.exists(`human_lock:${phone}`)
+    if (isHumanLocked) {
+      console.log('[WEBHOOK] conversa travada por atendimento humano manual — IA nao responde:', phone)
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── Agrupamento: espera 30s. Se chegar mensagem mais nova (marcador no
+    //    Redis muda), esta invocação sai e deixa a invocação da última
+    //    mensagem responder a tudo de uma vez. ──
+    await redis.set(`latest_msg:${phone}`, arrivalTs, 'EX', 60)
+    await new Promise((r) => setTimeout(r, 30000))
+
+    const latestMarker = await redis.get(`latest_msg:${phone}`)
+    if (latestMarker !== arrivalTs) {
+      console.log('[WEBHOOK] mensagem mais recente chegou — esta invocação aguarda a próxima responder')
+      return NextResponse.json({ ok: true })
+    }
 
     const { data: freshRows } = await supabase
       .from('ai_conversations')
@@ -163,12 +197,6 @@ export async function POST(req: NextRequest) {
     const fresh = freshRows?.[0] ?? conversation
     const freshHistory: Array<{ role: string; content: string; timestamp?: string }> =
       fresh.conversation_history ?? []
-
-    const lastUser = [...freshHistory].reverse().find((m) => m.role === 'user')
-    if (lastUser && lastUser.timestamp !== arrivalTs) {
-      console.log('[WEBHOOK] mensagem mais recente chegou — esta invocação aguarda a próxima responder')
-      return NextResponse.json({ ok: true })
-    }
 
     // ── Junta todas as mensagens do lead ainda não respondidas ──
     let lastAssistantIdx = -1
