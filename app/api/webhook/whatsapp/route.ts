@@ -157,17 +157,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    // ── Registra a mensagem do lead no histórico imediatamente ──
+    // ── Registra a mensagem do lead imediatamente (fonte única: interactions) ──
     const arrivalTs = new Date().toISOString()
-    const historyWithUser = [
-      ...(conversation.conversation_history ?? []),
-      { role: 'user', content: message, timestamp: arrivalTs },
-    ]
-    await supabase.from('ai_conversations').update({
-      conversation_history: historyWithUser,
-      updated_at: arrivalTs,
-    }).eq('id', conversation.id)
-
     await supabase.from('interactions').insert({
       lead_id: conversation.lead_id,
       channel: 'whatsapp',
@@ -196,14 +187,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    const { data: freshRows } = await supabase
-      .from('ai_conversations')
-      .select('*')
-      .eq('id', conversation.id)
-      .limit(1)
-    const fresh = freshRows?.[0] ?? conversation
-    const freshHistory: Array<{ role: string; content: string; timestamp?: string }> =
-      fresh.conversation_history ?? []
+    const freshHistory = await getRecentHistory(supabase, conversation.lead_id)
 
     // ── Junta todas as mensagens do lead ainda não respondidas ──
     let lastAssistantIdx = -1
@@ -219,21 +203,9 @@ export async function POST(req: NextRequest) {
 
     // Processa com IA (histórico anterior + bloco de mensagens novas combinadas)
     const { reply, updatedQualification, shouldHandoff } = await processMessage(
-      { ...fresh, conversation_history: priorHistory } as AiConversation,
+      { ...conversation, conversation_history: priorHistory } as AiConversation,
       combinedMessage
     )
-
-    // Atualiza histórico com a resposta
-    const finalHistory = [
-      ...freshHistory,
-      { role: 'assistant', content: reply, timestamp: new Date().toISOString() },
-    ]
-
-    await supabase.from('ai_conversations').update({
-      conversation_history: finalHistory,
-      qualification_data: updatedQualification,
-      updated_at: new Date().toISOString(),
-    }).eq('id', conversation.id)
 
     // Registra resposta da IA
     await supabase.from('interactions').insert({
@@ -243,6 +215,17 @@ export async function POST(req: NextRequest) {
       content: reply,
       ai_generated: true,
     })
+
+    await supabase.from('ai_conversations').update({
+      qualification_data: updatedQualification,
+      updated_at: new Date().toISOString(),
+    }).eq('id', conversation.id)
+
+    // Histórico completo (janela + resposta desta rodada), usado pelo resumo/orientações
+    const finalHistory: HistoryRow[] = [
+      ...freshHistory,
+      { role: 'assistant', content: reply, timestamp: new Date().toISOString() },
+    ]
 
     // Persiste os dados qualificados direto no lead, conforme a conversa avança
     const { score, profile } = computeLeadScore(updatedQualification)
@@ -256,10 +239,18 @@ export async function POST(req: NextRequest) {
       if (updatedQualification[key] !== undefined) leadUpdate[key] = updatedQualification[key]
     }
 
-    // A cada 2 mensagens do lead, recalcula o resumo de uma linha
-    const userMessageCount = finalHistory.filter((m) => m.role === 'user').length
+    // A cada 2 mensagens do lead, recalcula o resumo de uma linha.
+    // Conta o total de mensagens inbound do lead (não a janela de 20, que
+    // satura e travaria a paridade sempre no mesmo valor).
+    const { count: userMessageCount } = await supabase
+      .from('interactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('lead_id', conversation.lead_id)
+      .eq('channel', 'whatsapp')
+      .eq('direction', 'inbound')
+
     let latestSummary: string | undefined
-    if (userMessageCount % 2 === 0) {
+    if (userMessageCount !== null && userMessageCount % 2 === 0) {
       const generated = await generateLeadSummary(finalHistory, updatedQualification)
       if (generated) {
         latestSummary = generated
