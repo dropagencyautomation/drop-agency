@@ -1,3 +1,5 @@
+import { getRedis } from '@/lib/redis/client'
+
 const BASE_URL = process.env.UAZAPI_BASE_URL!
 const TOKEN = process.env.UAZAPI_TOKEN!
 const INSTANCE = process.env.UAZAPI_INSTANCE!
@@ -83,6 +85,15 @@ export function splitIntoBlocks(text: string): string[] {
 }
 
 /**
+ * TTL (segundos) da flag "bot enviando" para um número: cobre o tempo
+ * estimado de envio de todos os blocos (delay de digitação + pausas entre
+ * blocos) mais uma margem de segurança para o eco do webhook chegar.
+ */
+export function botSendingTtlSeconds(blockCount: number): number {
+  return blockCount * 5 + 10
+}
+
+/**
  * Envia a resposta da IA em blocos separados, simulando uma conversa natural
  * no WhatsApp: envia um bloco, aguarda um tempo aleatório entre 2 e 3 segundos
  * e então envia o próximo, até terminar todos os blocos.
@@ -90,6 +101,11 @@ export function splitIntoBlocks(text: string): string[] {
 export async function sendSplitText(phone: string, text: string) {
   const blocks = splitIntoBlocks(text)
   if (blocks.length === 0) return
+
+  // Marca que o bot está enviando para este número, para o webhook não
+  // confundir o eco do próprio envio com uma mensagem humana manual.
+  const redis = getRedis()
+  await redis.set(`bot:sending:${phone}`, '1', 'EX', botSendingTtlSeconds(blocks.length))
 
   for (let i = 0; i < blocks.length; i++) {
     await sendText(phone, blocks[i])
