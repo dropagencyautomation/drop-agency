@@ -137,14 +137,15 @@ export async function POST(req: NextRequest) {
         await redis.set(`human_lock:${phone}`, '1', 'EX', 900)
 
         if (message) {
-          const ts = new Date().toISOString()
-          await supabase.from('ai_conversations').update({
-            conversation_history: [
-              ...(conversation.conversation_history ?? []),
-              { role: 'assistant', content: message, timestamp: ts },
-            ],
-            updated_at: ts,
-          }).eq('id', conversation.id)
+          // Grava em interactions (fonte de verdade do chat no CRM e da
+          // memória da IA), não mais em conversation_history.
+          await supabase.from('interactions').insert({
+            lead_id: conversation.lead_id,
+            channel: 'whatsapp',
+            direction: 'outbound',
+            content: message,
+            ai_generated: false,
+          })
         }
       }
 
