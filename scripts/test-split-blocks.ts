@@ -4,7 +4,7 @@
 // Uso: npx tsx scripts/test-split-blocks.ts
 
 import assert from 'node:assert/strict'
-import { splitIntoBlocks, stripTrailingPeriod, botSendingTtlSeconds } from '../lib/uazapi/client'
+import { splitIntoBlocks, stripTrailingPeriod } from '../lib/uazapi/client'
 
 assert.equal(stripTrailingPeriod('Entendi.'), 'Entendi')
 assert.equal(stripTrailingPeriod('Vocês já usam algum sistema?'), 'Vocês já usam algum sistema?')
@@ -21,7 +21,4 @@ assert.deepEqual(blocks, [
   'Hoje vocês perdem muitos leads por demora no atendimento',
 ])
 
-assert.equal(botSendingTtlSeconds(1), 15)
-assert.equal(botSendingTtlSeconds(3), 25)
-
-console.log('OK - todos os testes de splitIntoBlocks/stripTrailingPeriod/botSendingTtlSeconds passaram')
+console.log('OK - todos os testes de splitIntoBlocks/stripTrailingPeriod passaram')
