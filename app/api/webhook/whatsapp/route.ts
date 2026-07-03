@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 import { createServiceClient } from '@/lib/supabase/server'
-import { processMessage, computeLeadScore } from '@/lib/openai/agent'
-import { sendSplitText, notifyHandoff } from '@/lib/uazapi/client'
+import { processMessage, computeLeadScore, generateLeadSummary, generateHandoffGuidance } from '@/lib/openai/agent'
+import { sendSplitText, sendText, notifyQualifiedLead } from '@/lib/uazapi/client'
 import { getRedis } from '@/lib/redis/client'
 import type { AiConversation, QualificationData } from '@/types/database'
 
@@ -21,25 +21,6 @@ const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
   'growth_goals',
   'estimated_budget',
 ]
-
-function buildHandoffSummary(
-  leadName: string,
-  q: QualificationData,
-  score: number,
-  nextStep: string
-): string {
-  const na = 'não informado'
-  return [
-    `• Nome: ${leadName}`,
-    `• Nicho: ${q.niche ?? na}`,
-    `• Serviço de interesse: ${q.desired_service ?? q.service_type ?? na}`,
-    `• Faturamento: ${q.revenue_range ?? na}`,
-    `• Dor principal: ${q.main_pains ?? na}`,
-    `• Urgência: ${q.urgency ?? na}`,
-    `• Próximo passo: ${nextStep}`,
-    `• Score: ${score}`,
-  ].join('\n')
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -249,29 +230,32 @@ export async function POST(req: NextRequest) {
       if (updatedQualification[key] !== undefined) leadUpdate[key] = updatedQualification[key]
     }
 
+    // A cada 2 mensagens do lead, recalcula o resumo de uma linha
+    const userMessageCount = finalHistory.filter((m) => m.role === 'user').length
+    let latestSummary: string | undefined
+    if (userMessageCount % 2 === 0) {
+      const generated = await generateLeadSummary(finalHistory, updatedQualification)
+      if (generated) {
+        latestSummary = generated
+        leadUpdate.summary = generated
+      }
+    }
+
     await supabase.from('leads').update(leadUpdate).eq('id', conversation.lead_id)
 
     // Envia resposta em blocos separados
     await sendSplitText(phone, reply)
 
-    // Se handoff: avança lead no kanban + notifica Camila com resumo completo
+    // Se handoff: mensagem fixa de encerramento + notifica a Camila
     if (shouldHandoff) {
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('name, phone')
-        .eq('id', conversation.lead_id)
-        .single()
+      await sendText(phone, 'Obrigado pelo contato, em breve vamos falar com você')
 
       await supabase.from('leads').update({ stage_id: 2 }).eq('id', conversation.lead_id)
 
-      const leadName = updatedQualification.name ?? lead?.name ?? phone
-      const nextStep =
-        updatedQualification.service_type === 'recorrente'
-          ? 'sessão estratégica com a Camila'
-          : 'continuar atendimento humano'
-      const summary = buildHandoffSummary(leadName, updatedQualification, score, nextStep)
+      const summary = latestSummary ?? (await generateLeadSummary(finalHistory, updatedQualification))
+      const guidance = await generateHandoffGuidance(finalHistory, updatedQualification)
 
-      await notifyHandoff(phone, leadName, summary)
+      await notifyQualifiedLead(phone, summary, guidance)
     }
 
     return NextResponse.json({ ok: true })

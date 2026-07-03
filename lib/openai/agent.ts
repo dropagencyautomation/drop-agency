@@ -291,8 +291,10 @@ function mergeQualificationData(
   return merged
 }
 
+type HistoryLike = Array<{ role: string; content: string; timestamp?: string }>
+
 function buildTranscript(
-  history: AiConversation['conversation_history'],
+  history: HistoryLike,
   qualification: QualificationData
 ): string {
   const conversationText = history
@@ -306,7 +308,7 @@ function buildTranscript(
 }
 
 export async function generateLeadSummary(
-  history: AiConversation['conversation_history'],
+  history: HistoryLike,
   qualification: QualificationData
 ): Promise<string> {
   const openai = getOpenAI()
@@ -327,7 +329,7 @@ export async function generateLeadSummary(
 }
 
 export async function generateHandoffGuidance(
-  history: AiConversation['conversation_history'],
+  history: HistoryLike,
   qualification: QualificationData
 ): Promise<string> {
   const openai = getOpenAI()
