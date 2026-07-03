@@ -22,6 +22,31 @@ const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
   'estimated_budget',
 ]
 
+type HistoryRow = { role: 'user' | 'assistant'; content: string; timestamp: string }
+
+async function getRecentHistory(
+  supabase: Awaited<ReturnType<typeof createServiceClient>>,
+  leadId: string,
+  limit = 20
+): Promise<HistoryRow[]> {
+  const { data } = await supabase
+    .from('interactions')
+    .select('direction, content, created_at')
+    .eq('lead_id', leadId)
+    .eq('channel', 'whatsapp')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  return (data ?? [])
+    .slice()
+    .reverse()
+    .map((row) => ({
+      role: row.direction === 'inbound' ? ('user' as const) : ('assistant' as const),
+      content: row.content as string,
+      timestamp: row.created_at as string,
+    }))
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
