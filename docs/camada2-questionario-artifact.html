@@ -1,0 +1,220 @@
+<title>Camada 2 — Questionário para a Camila</title>
+<style>
+  :root {
+    --bg: #f4f5f1;
+    --surface: #ffffff;
+    --text: #1c201d;
+    --text-muted: #5b625b;
+    --accent: #2f5233;
+    --accent-soft: #dde6dc;
+    --border: #dadfd6;
+    --serif: Iowan Old Style, "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a;
+      --surface: #1b1f1d;
+      --text: #edefea;
+      --text-muted: #9ba39b;
+      --accent: #7fb28b;
+      --accent-soft: #223129;
+      --border: #2b302c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171a;
+    --surface: #1b1f1d;
+    --text: #edefea;
+    --text-muted: #9ba39b;
+    --accent: #7fb28b;
+    --accent-soft: #223129;
+    --border: #2b302c;
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f5f1;
+    --surface: #ffffff;
+    --text: #1c201d;
+    --text-muted: #5b625b;
+    --accent: #2f5233;
+    --accent-soft: #dde6dc;
+    --border: #dadfd6;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 4.5rem 1.75rem 6rem;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 0.9rem;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 2.35rem;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 1.4rem;
+    text-wrap: balance;
+    color: var(--text);
+  }
+
+  .intro {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    padding: 1.5rem 1.75rem;
+    margin: 0 0 3.25rem;
+  }
+
+  .intro p {
+    margin: 0 0 0.9rem;
+    color: var(--text-muted);
+    font-size: 1rem;
+    max-width: 64ch;
+  }
+  .intro p:last-child { margin-bottom: 0; }
+  .intro strong { color: var(--text); font-weight: 600; }
+
+  .questions {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .q {
+    padding: 2.35rem 0;
+    border-top: 1px solid var(--border);
+  }
+  .q:last-child { padding-bottom: 0; }
+
+  .q-num {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin: 0 0 0.6rem;
+  }
+
+  .q h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 1.45rem;
+    margin: 0 0 0.7rem;
+    color: var(--text);
+    text-wrap: balance;
+  }
+
+  .q p {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--text-muted);
+    font-size: 1rem;
+  }
+
+  .q .answer-line {
+    margin-top: 1.4rem;
+    border-bottom: 1px dashed var(--border);
+    height: 2.6rem;
+  }
+  .q .answer-line + .answer-line { margin-top: 1rem; }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 1.75rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+  }
+
+  @media (max-width: 560px) {
+    .page { padding: 3rem 1.25rem 4rem; }
+    h1 { font-size: 1.9rem; }
+    .intro { padding: 1.25rem 1.35rem; }
+  }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Drop Agency · Treinamento do agente · Camada 2</p>
+  <h1>O raciocínio por trás das suas decisões</h1>
+
+  <div class="intro">
+    <p><strong>Por que isso importa:</strong> a primeira camada do agente (tom, vocabulário, arquétipo, scripts de preço) já está implementada. Esta segunda camada é transformar a Carol numa versão operacional do seu próprio raciocínio: como você lê um lead, o que te faz confiar ou recusar, como você conduz uma objeção de verdade.</p>
+    <p>Isso não dá pra tirar de um documento de posicionamento geral, precisa vir de você. Responda com <strong>situações reais</strong> que já aconteceram, não com teoria. Uma frase exata que você já usou vale mais que uma explicação do conceito.</p>
+  </div>
+
+  <div class="questions">
+    <div class="q">
+      <p class="q-num">01 — Sinais de confiança</p>
+      <h2>O que te faz pensar "esse aqui vai fechar e vai dar certo"?</h2>
+      <p>Pensa nas últimas conversas em que você saiu com essa sensação. O que a pessoa disse ou fez, especificamente, que te deu essa segurança? Pode trazer mais de um exemplo.</p>
+      <div class="answer-line"></div>
+      <div class="answer-line"></div>
+    </div>
+
+    <div class="q">
+      <p class="q-num">02 — Sinais de recusa</p>
+      <h2>O que te faz recuar, mesmo com o lead querendo fechar?</h2>
+      <p>Conversas em que você decidiu não seguir adiante, ou desencorajou o projeto. O que ligou o alerta? Teve alguma frase ou comportamento específico?</p>
+      <div class="answer-line"></div>
+      <div class="answer-line"></div>
+    </div>
+
+    <div class="q">
+      <p class="q-num">03 — Objeções reais</p>
+      <h2>Quais objeções você mais escuta, e como responde de verdade?</h2>
+      <p>Escolha as 2 ou 3 mais comuns. Para cada uma, escreva a frase que você usaria de verdade numa conversa, não um resumo da ideia.</p>
+      <div class="answer-line"></div>
+      <div class="answer-line"></div>
+      <div class="answer-line"></div>
+    </div>
+
+    <div class="q">
+      <p class="q-num">04 — Leitura de potencial</p>
+      <h2>Nos primeiros minutos, o que você observa pra formar uma opinião?</h2>
+      <p>Pode ser a forma de falar, o tipo de pergunta que a pessoa faz, como ela descreve o próprio negócio, ou algo específico do segmento dela.</p>
+      <div class="answer-line"></div>
+      <div class="answer-line"></div>
+    </div>
+
+    <div class="q">
+      <p class="q-num">05 — Confiança com lead cético</p>
+      <h2>Como você vira o jogo com quem chega desconfiado?</h2>
+      <p>Alguém que já teve experiência ruim com agência, por exemplo. O que você diz ou faz nos primeiros minutos? Se tiver uma conversa específica que virou num momento certo, conta ela.</p>
+      <div class="answer-line"></div>
+      <div class="answer-line"></div>
+    </div>
+
+    <div class="q">
+      <p class="q-num">06 — Em aberto</p>
+      <h2>Algo que não coube nas perguntas acima?</h2>
+      <p>Qualquer raciocínio seu que você usa e acha importante o agente aprender, mesmo que não se encaixe nas categorias anteriores.</p>
+      <div class="answer-line"></div>
+      <div class="answer-line"></div>
+    </div>
+  </div>
+
+  <footer>Drop Agency — material de treinamento interno do agente Carol</footer>
+</div>
