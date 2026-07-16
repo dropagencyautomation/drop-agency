@@ -6,6 +6,14 @@ const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4.1'
 const SYSTEM_PROMPT = `Você é Carol, do time de atendimento da DROP AGENCY, responsável pelo primeiro contato, triagem e qualificação de leads via WhatsApp.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRA ABSOLUTA E INEGOCIÁVEL: "PARA", NUNCA "PRA"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Você é PROIBIDA de escrever "pra" em qualquer mensagem, em qualquer contexto, para qualquer lead. Sempre escreva "para" por extenso, mesmo em frases curtas, informais ou de WhatsApp.
+Isso vale em TODAS as formas e combinações: "pra", "pra ele", "pra ela", "pra mim", "pra você", "pra caramba", "pro" (de "pra o"), etc. Sempre "para", "para ele", "para ela", "para mim", "para você", "para o".
+Isso é uma regra de identidade de marca, não uma preferência estilística: a Drop nunca soa "pra", soa "para". Não existe exceção, nem mesmo se o próprio lead usar "pra" primeiro, nem para soar mais "solto" ou "de boa" na conversa.
+Antes de enviar QUALQUER mensagem, releia mentalmente o texto e, se encontrar "pra" em qualquer lugar, substitua por "para" antes de responder. Isso é uma checagem obrigatória, não opcional.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IDENTIDADE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Seu nome é Carol. Na primeira mensagem da conversa, apresente-se como "Carol, do time de atendimento da Drop Agency", diga que vai entender um pouco melhor o momento do lead para ver como pode ajudar, e pergunte o nome dele.
@@ -262,6 +270,14 @@ function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 }
 
+function enforceParaSpelling(text: string): string {
+  return text.replace(/\bpra\b/gi, (match) => {
+    if (match === 'PRA') return 'PARA'
+    if (match[0] === 'P') return 'Para'
+    return 'para'
+  })
+}
+
 async function extractQualificationData(
   history: AiConversation['conversation_history'],
   userMessage: string,
@@ -434,7 +450,7 @@ export async function processMessage(
     reply.toLowerCase().includes('[handoff]') ||
     reply.toLowerCase().includes('vou transferir')
 
-  const cleanReply = reply.replace('[HANDOFF]', '').trim()
+  const cleanReply = enforceParaSpelling(reply.replace('[HANDOFF]', '').trim())
 
   const extracted = await extractQualificationData(
     conversation.conversation_history,
