@@ -270,6 +270,40 @@ function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 }
 
+const QUALIFICATION_LABELS: Record<keyof QualificationData, string> = {
+  name: 'Nome',
+  niche: 'Nicho/negócio',
+  service_type: 'Tipo de serviço',
+  desired_service: 'Serviço desejado',
+  main_objective: 'Objetivo principal',
+  urgency: 'Urgência',
+  revenue_range: 'Faturamento',
+  team_size: 'Tamanho da equipe',
+  digital_maturity: 'Maturidade digital',
+  has_marketing: 'Já investe em marketing',
+  main_pains: 'Principais dores',
+  growth_goals: 'Metas de crescimento',
+  estimated_budget: 'Orçamento estimado',
+  strategic_openness: 'Abertura estratégica',
+}
+
+// Memória persistente do lead: independe da janela de mensagens brutas, que pode
+// "rolar" para frente e perder a troca inicial (nome, saudação) em conversas longas.
+export function buildLeadMemoryBlock(qualification: QualificationData): string | null {
+  const entries = (Object.entries(qualification) as Array<[keyof QualificationData, unknown]>)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+
+  if (entries.length === 0) return null
+
+  const lines = entries.map(([key, value]) => `- ${QUALIFICATION_LABELS[key]}: ${value}`)
+
+  const nameLine = qualification.name
+    ? `\n\nO nome do lead é "${qualification.name}". Use exatamente esse nome ao se referir a ele. Este atendimento já está em andamento: nunca se apresente de novo nem peça o nome novamente, mesmo que as mensagens mais recentes pareçam um primeiro contato.`
+    : ''
+
+  return `MEMÓRIA DO LEAD (já coletada em conversas anteriores, não pergunte de novo o que já está listado aqui):\n${lines.join('\n')}${nameLine}`
+}
+
 function enforceParaSpelling(text: string): string {
   return text.replace(/\bpra\b/gi, (match) => {
     if (match === 'PRA') return 'PARA'
@@ -427,8 +461,11 @@ export async function processMessage(
 }> {
   const openai = getOpenAI()
 
+  const memoryBlock = buildLeadMemoryBlock(conversation.qualification_data)
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: SYSTEM_PROMPT },
+    ...(memoryBlock ? [{ role: 'system' as const, content: memoryBlock }] : []),
     ...conversation.conversation_history.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,

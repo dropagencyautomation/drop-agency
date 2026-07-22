@@ -27,7 +27,7 @@ type HistoryRow = { role: 'user' | 'assistant'; content: string; timestamp: stri
 async function getRecentHistory(
   supabase: Awaited<ReturnType<typeof createServiceClient>>,
   leadId: string,
-  limit = 20
+  limit = 200
 ): Promise<HistoryRow[]> {
   const { data } = await supabase
     .from('interactions')
@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
       '5511993414181@s.whatsapp.net',
       '5511964868132@s.whatsapp.net',
       '5541996621204@s.whatsapp.net',
+      '5511996008567@s.whatsapp.net',
     ]
     if (!ALLOWED_CHATIDS.includes(waChatId)) {
       console.log('[WEBHOOK] ignorado — wa_chatid nao permitido:', waChatId)
@@ -243,8 +244,8 @@ export async function POST(req: NextRequest) {
     }
 
     // A cada 2 mensagens do lead, recalcula o resumo de uma linha.
-    // Conta o total de mensagens inbound do lead (não a janela de 20, que
-    // satura e travaria a paridade sempre no mesmo valor).
+    // Conta o total de mensagens inbound do lead (não a janela de getRecentHistory,
+    // que satura e travaria a paridade sempre no mesmo valor).
     const { count: userMessageCount } = await supabase
       .from('interactions')
       .select('*', { count: 'exact', head: true })
