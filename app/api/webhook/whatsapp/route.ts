@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
       '5541996621204@s.whatsapp.net',
       '5511996008567@s.whatsapp.net',
       '5543999301514@s.whatsapp.net',
+      '5543988376610@s.whatsapp.net',
     ]
     if (!ALLOWED_CHATIDS.includes(waChatId)) {
       console.log('[WEBHOOK] ignorado — wa_chatid nao permitido:', waChatId)
