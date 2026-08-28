@@ -9,9 +9,13 @@ Data: 2026-08-28. Repo: drop-agency (Next.js 16, Supabase, Uazapi, OpenAI). Prod
 - Páginas `/whatsapp` e `/ia` são placeholders.
 - Decisão de produto (Mateus + Gabriel): cliente pode editar produtos (valores, info, fotos, novos), persona (nome, tom, estilo) e dados institucionais (horário etc.). NÃO pode editar fluxo de qualificação nem ferramentas do agente. Cuidado máximo para não quebrar o agente em produção.
 
-## Sub-projeto B — CANCELADO (2026-08-28)
+## Sub-projeto B — Configuração básica do agente (fazer primeiro)
 
-Decisão do Gabriel: o agente (prompt, `lib/openai/agent.ts`, lógica do webhook da Carol) fica exatamente como está. Nenhuma configuração do agente pelo CRM. Fica só o sub-projeto A.
+Regra (Gabriel, 2026-08-28): fluxo de qualificação e ferramentas do agente NÃO mudam. O texto do prompt fica igual; só as ocorrências literais de "Carol" viram o nome configurado, e blocos curtos são anexados ao FINAL do prompt em runtime.
+
+Editável pelo CRM (só admin): nome do agente, horário de atendimento, informações adicionais da empresa (texto curto), catálogo de produtos (nome, descrição, valor, foto, ativo) e flag `reveal_prices` (default false: catálogo entra sem preço e regra de não revelar valores continua).
+
+Dados: `agent_settings` (1 linha: `persona_name`, `extra_info`, `business_hours`, `reveal_prices`) + `agent_products`. Bucket `agent-products`. Leitura no webhook uma vez por request com fallback para defaults. Escrita só por API routes com service role + `audit_log`. Plano: `docs/superpowers/plans/2026-08-28-agent-config.md`.
 
 ## Sub-projeto A — Inbox WhatsApp
 
