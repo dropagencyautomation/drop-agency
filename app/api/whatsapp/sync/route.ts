@@ -4,6 +4,7 @@ import { adminClient } from '@/lib/agent/admin'
 import { findChats, findMessages, downloadMedia } from '@/lib/uazapi/client'
 import { parseChat, parseMessage, type WaMessageInput } from '@/lib/uazapi/parse'
 import { upsertChat, upsertMessages, previewFor } from '@/lib/inbox/store'
+import { isAllowedChat } from '@/lib/inbox/whitelist'
 import { getRedis } from '@/lib/redis/client'
 
 export const dynamic = 'force-dynamic'
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
 
       for (const rawChat of rawChats) {
         const chat = parseChat(rawChat)
-        if (!chat.id) continue
+        if (!chat.id || !isAllowedChat(chat.id)) continue
         const { messages: rawMsgs } = await findMessages(chat.id, 0, perChat)
         const parsed = rawMsgs.map(parseMessage).filter((m: WaMessageInput | null): m is WaMessageInput => m !== null)
         for (const m of parsed) {

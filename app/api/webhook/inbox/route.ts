@@ -3,6 +3,7 @@ import { adminClient } from '@/lib/agent/admin'
 import { parseMessage, parseChat, mapStatus } from '@/lib/uazapi/parse'
 import { upsertChat, ensureChat, upsertMessages, touchChatFromMessage, updateStatus } from '@/lib/inbox/store'
 import { downloadMedia } from '@/lib/uazapi/client'
+import { isAllowedChat } from '@/lib/inbox/whitelist'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
     if (event === 'messages') {
       const raw = body.message ?? body.data ?? body
       const m = parseMessage(raw)
-      if (!m || !m.chat_id) return NextResponse.json({ ok: true })
+      if (!m || !m.chat_id || !isAllowedChat(m.chat_id)) return NextResponse.json({ ok: true })
       if (body.chat?.wa_chatid) await upsertChat(db, parseChat(body.chat))
       else await ensureChat(db, m.chat_id, m.from_me ? null : m.sender_name)
       // fromMe sem sent_by = veio da Carol (API) ou do celular; marcamos como IA quando wasSentByApi

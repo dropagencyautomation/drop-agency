@@ -4,6 +4,7 @@ import { adminClient } from '@/lib/agent/admin'
 import { sendText, sendMedia } from '@/lib/uazapi/client'
 import { upsertMessages, touchChatFromMessage } from '@/lib/inbox/store'
 import { pauseAgent } from '@/lib/inbox/agentLock'
+import { isAllowedChat } from '@/lib/inbox/whitelist'
 import { extractSentIds } from '@/lib/inbox/sentIds'
 import type { WaMessageInput } from '@/lib/uazapi/parse'
 
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
   }
   if (!chatId) return NextResponse.json({ error: 'chatId obrigatório' }, { status: 400 })
   if (chatId.endsWith('@g.us')) return NextResponse.json({ error: 'Envio para grupos não suportado' }, { status: 400 })
+  if (!isAllowedChat(chatId)) return NextResponse.json({ error: 'Número fora da whitelist' }, { status: 400 })
   if (!file && !text.trim()) return NextResponse.json({ error: 'Mensagem vazia' }, { status: 400 })
   if (file && file.size > 16 * 1024 * 1024) return NextResponse.json({ error: 'Máximo 16MB' }, { status: 400 })
 
