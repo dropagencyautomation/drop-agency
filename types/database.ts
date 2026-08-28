@@ -148,3 +148,24 @@ export interface KanbanColumn {
   stage: PipelineStage
   leads: LeadWithStage[]
 }
+
+export interface AgentSettings {
+  id: 1
+  persona_name: string
+  extra_info: string
+  business_hours: { start: number; end: number }
+  updated_by: string | null
+  updated_at: string
+}
+
+export interface AgentProduct {
+  id: string
+  name: string
+  description: string
+  price: string
+  photo_url: string | null
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}

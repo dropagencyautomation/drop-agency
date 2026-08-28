@@ -1,9 +1,10 @@
 import OpenAI from 'openai'
-import type { AiConversation, QualificationData, LeadProfile } from '@/types/database'
+import type { AiConversation, QualificationData, LeadProfile, AgentSettings, AgentProduct } from '@/types/database'
+import { DEFAULT_SETTINGS } from '@/lib/agent/defaults'
 
 const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4.1'
 
-const SYSTEM_PROMPT = `Você é Carol, do time de atendimento da DROP AGENCY, responsável pelo primeiro contato, triagem e qualificação de leads via WhatsApp.
+const SYSTEM_PROMPT_TEMPLATE = (name: string) => `Você é ${name}, do time de atendimento da DROP AGENCY, responsável pelo primeiro contato, triagem e qualificação de leads via WhatsApp.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REGRA ABSOLUTA E INEGOCIÁVEL: "PARA", NUNCA "PRA"
@@ -16,7 +17,7 @@ Antes de enviar QUALQUER mensagem, releia mentalmente o texto e, se encontrar "p
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IDENTIDADE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Seu nome é Carol. Na primeira mensagem da conversa, apresente-se como "Carol, do time de atendimento da Drop Agency", diga que vai entender um pouco melhor o momento do lead para ver como pode ajudar, e pergunte o nome dele.
+Seu nome é ${name}. Na primeira mensagem da conversa, apresente-se como "${name}, do time de atendimento da Drop Agency", diga que vai entender um pouco melhor o momento do lead para ver como pode ajudar, e pergunte o nome dele.
 Assim que o lead disser o nome, use-o pelo resto da conversa. Nunca use "doutor(a)" ou qualquer tratamento genérico como padrão, só use um tratamento assim se o próprio lead pedir.
 Você não é a Camila. Camila é quem assume o atendimento depois do handoff, quando fizer sentido.
 
@@ -133,7 +134,7 @@ FORMATO (regras rígidas, isso é WhatsApp, não documento):
 FLUXO DE QUALIFICAÇÃO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ETAPA 1 — ABERTURA
-Apresente-se como Carol, do time de atendimento da Drop Agency. Pergunte o nome do lead antes de qualquer outra coisa. Demonstre interesse genuíno no negócio dele.
+Apresente-se como ${name}, do time de atendimento da Drop Agency. Pergunte o nome do lead antes de qualquer outra coisa. Demonstre interesse genuíno no negócio dele.
 
 ETAPA 2 — COLETA DE INFORMAÇÕES
 Não conduza isso como um formulário nem como um interrogatório. Converse normalmente, deixe o lead falar livremente, e vá registrando o que for surgindo organicamente. Sem ordem rígida, sem precisar perguntar tudo em sequência, sem parecer uma lista de perguntas.
@@ -253,7 +254,7 @@ Baseie-se na conversa e nos dados já qualificados. Foque em: tipo de negócio/n
 
 Responda em texto puro, uma frase só, sem aspas, sem prefixo como "Resumo:". Se não houver informação suficiente ainda, responda com uma frase curta descrevendo o que já se sabe (ex: "Lead ainda não informou o segmento do negócio").`
 
-const GUIDANCE_SYSTEM_PROMPT = `Você prepara um briefing curto para a Camila, consultora humana da Drop Agency, que vai continuar o atendimento de um lead que a IA (Carol) acabou de qualificar via WhatsApp.
+const GUIDANCE_SYSTEM_PROMPT = (name: string) => `Você prepara um briefing curto para a Camila, consultora humana da Drop Agency, que vai continuar o atendimento de um lead que a IA (${name}) acabou de qualificar via WhatsApp.
 
 Releia a conversa inteira e escreva um parágrafo (não uma lista) cobrindo, quando a informação existir:
 - Personalidade e forma de se comunicar do lead (direto, informal, técnico, receoso, etc.)
@@ -265,6 +266,52 @@ Releia a conversa inteira e escreva um parágrafo (não uma lista) cobrindo, qua
 - Recomendação de abordagem: como a Camila deve continuar a conversa
 
 Não invente informação que não apareceu na conversa. Se faltar algo, simplesmente não mencione. Responda em texto corrido, em português, sem títulos ou marcadores.`
+
+const SEP = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+
+function hoursBlock(s: AgentSettings): string {
+  if (
+    s.business_hours.start === DEFAULT_SETTINGS.business_hours.start &&
+    s.business_hours.end === DEFAULT_SETTINGS.business_hours.end
+  ) {
+    return ''
+  }
+  return `${SEP}
+HORÁRIO DE ATENDIMENTO
+${SEP}
+Se o lead perguntar sobre horário de atendimento, informe que a empresa atende das ${s.business_hours.start}h às ${s.business_hours.end}h (horário de Brasília).`
+}
+
+function extraInfoBlock(s: AgentSettings): string {
+  if (!s.extra_info) return ''
+  return `${SEP}
+INFORMAÇÕES ADICIONAIS DA EMPRESA (fornecidas pelo time, use quando fizer sentido)
+${SEP}
+${s.extra_info}`
+}
+
+function catalogBlock(products: AgentProduct[]): string {
+  if (products.length === 0) return ''
+  const lines = products.map((p) => `- ${p.name}${p.description ? `: ${p.description}` : ''}`)
+  const rule = 'Use o catálogo só para entender e descrever o que a empresa oferece. Continua valendo a regra de nunca informar valores.'
+  return `${SEP}
+CATÁLOGO DE PRODUTOS E SERVIÇOS
+${SEP}
+${lines.join('\n')}
+
+${rule}`
+}
+
+export function buildSystemPrompt(settings: AgentSettings, products: AgentProduct[]): string {
+  return [
+    SYSTEM_PROMPT_TEMPLATE(settings.persona_name),
+    hoursBlock(settings),
+    extraInfoBlock(settings),
+    catalogBlock(products),
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
 
 function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -315,14 +362,15 @@ function enforceParaSpelling(text: string): string {
 async function extractQualificationData(
   history: AiConversation['conversation_history'],
   userMessage: string,
-  assistantReply: string
+  assistantReply: string,
+  personaName: string
 ): Promise<Partial<QualificationData>> {
   const openai = getOpenAI()
 
   const transcript = [
-    ...history.map((m) => `${m.role === 'user' ? 'Lead' : 'Carol'}: ${m.content}`),
+    ...history.map((m) => `${m.role === 'user' ? 'Lead' : personaName}: ${m.content}`),
     `Lead: ${userMessage}`,
-    `Carol: ${assistantReply}`,
+    `${personaName}: ${assistantReply}`,
   ].join('\n')
 
   try {
@@ -360,10 +408,11 @@ type HistoryLike = Array<{ role: string; content: string; timestamp?: string }>
 
 function buildTranscript(
   history: HistoryLike,
-  qualification: QualificationData
+  qualification: QualificationData,
+  personaName: string
 ): string {
   const conversationText = history
-    .map((m) => `${m.role === 'user' ? 'Lead' : 'Carol'}: ${m.content}`)
+    .map((m) => `${m.role === 'user' ? 'Lead' : personaName}: ${m.content}`)
     .join('\n')
   const qualificationText = Object.entries(qualification)
     .filter(([, v]) => v !== undefined && v !== null && v !== '')
@@ -374,7 +423,8 @@ function buildTranscript(
 
 export async function generateLeadSummary(
   history: HistoryLike,
-  qualification: QualificationData
+  qualification: QualificationData,
+  personaName: string
 ): Promise<string> {
   const openai = getOpenAI()
   try {
@@ -382,7 +432,7 @@ export async function generateLeadSummary(
       model: MODEL,
       messages: [
         { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
-        { role: 'user', content: buildTranscript(history, qualification) },
+        { role: 'user', content: buildTranscript(history, qualification, personaName) },
       ],
       temperature: 0.3,
       max_tokens: 100,
@@ -395,15 +445,16 @@ export async function generateLeadSummary(
 
 export async function generateHandoffGuidance(
   history: HistoryLike,
-  qualification: QualificationData
+  qualification: QualificationData,
+  personaName: string
 ): Promise<string> {
   const openai = getOpenAI()
   try {
     const completion = await openai.chat.completions.create({
       model: MODEL,
       messages: [
-        { role: 'system', content: GUIDANCE_SYSTEM_PROMPT },
-        { role: 'user', content: buildTranscript(history, qualification) },
+        { role: 'system', content: GUIDANCE_SYSTEM_PROMPT(personaName) },
+        { role: 'user', content: buildTranscript(history, qualification, personaName) },
       ],
       temperature: 0.3,
       max_tokens: 400,
@@ -452,7 +503,8 @@ export function computeLeadScore(q: QualificationData): { score: number; profile
 
 export async function processMessage(
   conversation: AiConversation,
-  userMessage: string
+  userMessage: string,
+  config: { settings: AgentSettings; products: AgentProduct[] }
 ): Promise<{
   reply: string
   replyChunks: string[]
@@ -464,7 +516,7 @@ export async function processMessage(
   const memoryBlock = buildLeadMemoryBlock(conversation.qualification_data)
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: buildSystemPrompt(config.settings, config.products) },
     ...(memoryBlock ? [{ role: 'system' as const, content: memoryBlock }] : []),
     ...conversation.conversation_history.map((m) => ({
       role: m.role as 'user' | 'assistant',
@@ -492,7 +544,8 @@ export async function processMessage(
   const extracted = await extractQualificationData(
     conversation.conversation_history,
     userMessage,
-    cleanReply
+    cleanReply,
+    config.settings.persona_name
   )
   const updatedQualification = mergeQualificationData(conversation.qualification_data, extracted)
 

@@ -13,3 +13,5 @@ Thumbs.db
 tsconfig.tsbuildinfo
 *.tsbuildinfo
 .env.local.bak
+.superpowers/
+supabase/.temp/
