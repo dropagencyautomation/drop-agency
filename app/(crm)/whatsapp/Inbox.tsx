@@ -158,7 +158,7 @@ export default function Inbox({ initialChats, userId }: { initialChats: WaChat[]
   }, [supabase])
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '30% 1fr', height: '100vh', overflow: 'hidden', background: '#070707' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '30% 1fr', height: '100%', minHeight: 0, overflow: 'hidden', background: '#070707' }}>
       <div style={{ background: '#0a0a0a', borderRight: '1px solid #1f1f1f', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <ChatList
           chats={chats} activeId={activeId} search={search}
