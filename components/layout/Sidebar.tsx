@@ -33,7 +33,7 @@ const NAV_GROUPS = [
     label: 'Inteligência',
     items: [
       { href: '/metrics', label: 'Métricas', icon: ChartIcon },
-      { href: '/ia',      label: 'IA & Análise', icon: CpuIcon },
+      { href: '/ia',      label: 'Agente IA', icon: CpuIcon },
     ],
   },
   {
