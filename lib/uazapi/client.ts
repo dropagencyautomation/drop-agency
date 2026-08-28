@@ -4,9 +4,10 @@ const BASE_URL = process.env.UAZAPI_BASE_URL!
 const TOKEN = process.env.UAZAPI_TOKEN!
 const INSTANCE = process.env.UAZAPI_INSTANCE!
 
-async function request(path: string, body?: object) {
+async function request(path: string, body?: object, timeoutMs?: number) {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
+    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -108,6 +109,37 @@ export async function sendSplitText(phone: string, text: string) {
       await sleep(getRandomBlockDelay())
     }
   }
+}
+
+export async function findChats(offset = 0, limit = 100) {
+  const r = await request('/chat/find', { offset, limit, sort: '-wa_lastMsgTimestamp' })
+  const chats = Array.isArray(r?.chats) ? r.chats : []
+  return { chats, hasMore: chats.length === limit }
+}
+
+export async function findMessages(chatid: string, offset = 0, limit = 200) {
+  const r = await request('/message/find', { chatid, offset, limit })
+  return { messages: Array.isArray(r?.messages) ? r.messages : [], hasMore: Boolean(r?.hasMore), nextOffset: Number(r?.nextOffset ?? offset + limit) }
+}
+
+export async function downloadMedia(fullId: string): Promise<{ fileURL: string; mimetype: string } | null> {
+  try {
+    const r = await request('/message/download', { id: fullId }, 20000)
+    return r?.fileURL ? { fileURL: r.fileURL, mimetype: r.mimetype ?? '' } : null
+  } catch (e) { console.error('[UAZAPI] download falhou', fullId, e); return null }
+}
+
+export async function sendMedia(number: string, type: 'image' | 'video' | 'audio' | 'document', file: string, caption?: string, docName?: string, opts?: { ptt?: boolean }) {
+  // Mesmo marcador do sendText: sem ele o webhook da Carol lê o eco do próprio
+  // envio como mensagem humana e sobrescreve o human_lock de 30 dias por 15 min.
+  // ponytail: Redis fora do ar não pode travar o envio — logamos e seguimos.
+  try { await getRedis().set(`bot:sending:${number}`, '1', 'EX', 15) } catch (e) { console.error('[UAZAPI] bot:sending falhou', number, e) }
+
+  return request('/send/media', { number, type, file, text: caption ?? '', docName, ...opts })
+}
+
+export async function markRead(number: string) {
+  try { await request('/chat/read', { number }) } catch (e) { console.error('[UAZAPI] chat/read falhou', number, e) }
 }
 
 export async function notifyQualifiedLead(leadPhone: string, summary: string, guidance: string, personaName = 'Carol') {
