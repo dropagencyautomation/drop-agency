@@ -5,6 +5,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { processMessage, computeLeadScore, generateLeadSummary, generateHandoffGuidance } from '@/lib/openai/agent'
 import { sendSplitText, sendText, notifyQualifiedLead } from '@/lib/uazapi/client'
 import { getRedis } from '@/lib/redis/client'
+import { loadAgentConfig } from '@/lib/agent/settings'
 import type { AiConversation, QualificationData } from '@/types/database'
 
 const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
@@ -94,6 +95,8 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createServiceClient()
+    const agentConfig = await loadAgentConfig(supabase)
+    const personaName = agentConfig.settings.persona_name
 
     // Busca ou cria conversa (limit(1) evita erro de múltiplas linhas)
     const { data: convRows } = await supabase
@@ -210,7 +213,8 @@ export async function POST(req: NextRequest) {
     // Processa com IA (histórico anterior + bloco de mensagens novas combinadas)
     const { reply, updatedQualification, shouldHandoff } = await processMessage(
       { ...conversation, conversation_history: priorHistory } as AiConversation,
-      combinedMessage
+      combinedMessage,
+      agentConfig
     )
 
     // Registra resposta da IA
@@ -257,7 +261,7 @@ export async function POST(req: NextRequest) {
 
     let latestSummary: string | undefined
     if (userMessageCount !== null && userMessageCount % 2 === 0) {
-      const generated = await generateLeadSummary(finalHistory, updatedQualification)
+      const generated = await generateLeadSummary(finalHistory, updatedQualification, personaName)
       if (generated) {
         latestSummary = generated
         leadUpdate.summary = generated
@@ -275,10 +279,10 @@ export async function POST(req: NextRequest) {
 
       await supabase.from('leads').update({ stage_id: 2 }).eq('id', conversation.lead_id)
 
-      const summary = latestSummary ?? (await generateLeadSummary(finalHistory, updatedQualification))
-      const guidance = await generateHandoffGuidance(finalHistory, updatedQualification)
+      const summary = latestSummary ?? (await generateLeadSummary(finalHistory, updatedQualification, personaName))
+      const guidance = await generateHandoffGuidance(finalHistory, updatedQualification, personaName)
 
-      await notifyQualifiedLead(phone, summary, guidance)
+      await notifyQualifiedLead(phone, summary, guidance, personaName)
     }
 
     return NextResponse.json({ ok: true })

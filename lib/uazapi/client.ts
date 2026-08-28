@@ -110,12 +110,12 @@ export async function sendSplitText(phone: string, text: string) {
   }
 }
 
-export async function notifyQualifiedLead(leadPhone: string, summary: string, guidance: string) {
+export async function notifyQualifiedLead(leadPhone: string, summary: string, guidance: string, personaName = 'Carol') {
   const adminPhone = process.env.ADMIN_PHONE
   if (!adminPhone) return
   const text =
     `✅ NOVO LEAD QUALIFICADO\n\n` +
-    `o lead: ${leadPhone} foi qualificado pela agente de IA Carol\n\n` +
+    `o lead: ${leadPhone} foi qualificado pela agente de IA ${personaName}\n\n` +
     `resumo: ${summary}\n\n` +
     `orientações: ${guidance}\n\n` +
     `--------------------------------------------------`
