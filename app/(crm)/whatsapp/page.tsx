@@ -13,5 +13,5 @@ export default async function WhatsAppPage() {
     .order('last_message_at', { ascending: false, nullsFirst: false })
     .limit(300)
 
-  return <Inbox initialChats={(chats ?? []) as WaChat[]} userId={user?.id ?? ''} />
+  return <div style={{ height: '100vh' }}><Inbox initialChats={(chats ?? []) as WaChat[]} userId={user?.id ?? ''} /></div>
 }
