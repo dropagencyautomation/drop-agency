@@ -10,9 +10,9 @@ export async function POST(req: NextRequest) {
   if (req.nextUrl.searchParams.get('secret') !== process.env.WEBHOOK_SECRET) return NextResponse.json({ ok: true })
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ ok: true })
-  const db = adminClient()
   const event = String(body.EventType ?? body.event ?? body.type ?? '').toLowerCase()
   try {
+    const db = adminClient()
     if (event === 'messages') {
       const raw = body.message ?? body.data ?? body
       const m = parseMessage(raw)

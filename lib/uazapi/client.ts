@@ -4,9 +4,10 @@ const BASE_URL = process.env.UAZAPI_BASE_URL!
 const TOKEN = process.env.UAZAPI_TOKEN!
 const INSTANCE = process.env.UAZAPI_INSTANCE!
 
-async function request(path: string, body?: object) {
+async function request(path: string, body?: object, timeoutMs?: number) {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
+    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -123,7 +124,7 @@ export async function findMessages(chatid: string, offset = 0, limit = 200) {
 
 export async function downloadMedia(fullId: string): Promise<{ fileURL: string; mimetype: string } | null> {
   try {
-    const r = await request('/message/download', { id: fullId })
+    const r = await request('/message/download', { id: fullId }, 20000)
     return r?.fileURL ? { fileURL: r.fileURL, mimetype: r.mimetype ?? '' } : null
   } catch (e) { console.error('[UAZAPI] download falhou', fullId, e); return null }
 }
