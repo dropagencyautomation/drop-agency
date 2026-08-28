@@ -23,7 +23,7 @@ describe('resolveSettings', () => {
 describe('loadAgentConfig', () => {
   it('erro no banco → defaults e lista vazia', async () => {
     const boom = async () => { throw new Error('down') }
-    const fake = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: boom, order: boom }) }) }) }
+    const fake = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: boom, order: () => ({ order: boom }) }) }) }) }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const r = await loadAgentConfig(fake as any)
     expect(r.settings).toEqual(DEFAULT_SETTINGS)
@@ -37,7 +37,7 @@ describe('loadAgentConfig', () => {
         select: () => ({
           eq: () => ({
             maybeSingle: async () => ({ data: null, error: err }),
-            order: async () => ({ data: null, error: err }),
+            order: () => ({ order: async () => ({ data: null, error: err }) }),
           }),
         }),
       }),
