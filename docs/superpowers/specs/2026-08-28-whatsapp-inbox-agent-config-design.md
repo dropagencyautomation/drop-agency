@@ -9,59 +9,9 @@ Data: 2026-08-28. Repo: drop-agency (Next.js 16, Supabase, Uazapi, OpenAI). Prod
 - Páginas `/whatsapp` e `/ia` são placeholders.
 - Decisão de produto (Mateus + Gabriel): cliente pode editar produtos (valores, info, fotos, novos), persona (nome, tom, estilo) e dados institucionais (horário etc.). NÃO pode editar fluxo de qualificação nem ferramentas do agente. Cuidado máximo para não quebrar o agente em produção.
 
-## Sub-projeto B — Configuração do agente (fazer primeiro)
+## Sub-projeto B — CANCELADO (2026-08-28)
 
-### Dados (migration `004_agent_settings.sql`)
-
-```sql
-create table agent_settings (
-  id int primary key default 1 check (id = 1),
-  persona_name text not null default 'Carol',
-  tone text not null default '',
-  style text not null default '',
-  institutional_info text not null default '',
-  business_hours jsonb not null default '{"start":8,"end":19}',
-  updated_by uuid references auth.users(id),
-  updated_at timestamptz not null default now()
-);
-insert into agent_settings (id) values (1);
-
-create table agent_products (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  description text not null default '',
-  price text not null default '',
-  photo_url text,
-  is_active boolean not null default true,
-  sort_order int not null default 0,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-```
-
-RLS: leitura para autenticados; escrita só `role = 'admin'` em `user_profiles`. Storage bucket público `agent-products`.
-
-Defaults de `tone`, `style`, `institutional_info` = texto extraído do prompt atual (seção COMUNICAÇÃO e SOBRE A DROP AGENCY), inseridos na migration para o comportamento em produção não mudar após deploy.
-
-### Prompt
-
-`lib/openai/agent.ts`:
-- `SYSTEM_PROMPT` constante → `buildSystemPrompt(settings: AgentSettings, products: AgentProduct[]): string`.
-- Esqueleto fixo no código: regra "para/pra", arquétipo, ICP, segredos, fluxo de qualificação, roteamento comercial, objeções, handoff. Nunca editável pela UI.
-- Blocos injetados: IDENTIDADE (usa `persona_name`), COMUNICAÇÃO (`tone`, `style`), SOBRE A EMPRESA (`institutional_info`, `business_hours`), CATÁLOGO (lista `agent_products` ativos: nome, descrição, preço).
-- Toda ocorrência hardcoded de "Carol" (agent.ts, `notifyQualifiedLead` em uazapi/client.ts) usa `persona_name`.
-- `processMessage` e demais recebem `settings` por parâmetro; webhook carrega `agent_settings` + `agent_products` uma vez por request (service client). `BUSINESS_HOURS_*` env deixa de ser lido; `business_hours` do banco substitui.
-- Falha ao ler settings → usa defaults em código (nunca deixa o agente sem prompt).
-
-### UI `/ia` → "Agente"
-
-Client page, só admin (outros veem aviso). Três cards:
-1. Persona: nome, tom de voz (textarea), estilo de comunicação (textarea).
-2. Institucional: texto livre + horário início/fim.
-3. Produtos: lista com nome, preço, descrição, foto (upload para `agent-products`), ativo; adicionar/editar/remover.
-Botão "Restaurar padrão" (repõe defaults da migration). Salvar → `PATCH /api/agent/settings`, `POST|PATCH|DELETE /api/agent/products`; cada alteração grava `audit_log` (`UPDATE_AGENT_SETTINGS`, `UPSERT_AGENT_PRODUCT`, `DELETE_AGENT_PRODUCT`).
-
-Sidebar: label "IA & Análise" → "Agente IA".
+Decisão do Gabriel: o agente (prompt, `lib/openai/agent.ts`, lógica do webhook da Carol) fica exatamente como está. Nenhuma configuração do agente pelo CRM. Fica só o sub-projeto A.
 
 ## Sub-projeto A — Inbox WhatsApp
 
