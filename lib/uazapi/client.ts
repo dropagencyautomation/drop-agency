@@ -110,6 +110,32 @@ export async function sendSplitText(phone: string, text: string) {
   }
 }
 
+export async function findChats(offset = 0, limit = 100) {
+  const r = await request('/chat/find', { offset, limit, sort: '-wa_lastMsgTimestamp' })
+  const chats = Array.isArray(r?.chats) ? r.chats : []
+  return { chats, hasMore: chats.length === limit }
+}
+
+export async function findMessages(chatid: string, offset = 0, limit = 200) {
+  const r = await request('/message/find', { chatid, offset, limit })
+  return { messages: Array.isArray(r?.messages) ? r.messages : [], hasMore: Boolean(r?.hasMore), nextOffset: Number(r?.nextOffset ?? offset + limit) }
+}
+
+export async function downloadMedia(fullId: string): Promise<{ fileURL: string; mimetype: string } | null> {
+  try {
+    const r = await request('/message/download', { id: fullId })
+    return r?.fileURL ? { fileURL: r.fileURL, mimetype: r.mimetype ?? '' } : null
+  } catch (e) { console.error('[UAZAPI] download falhou', fullId, e); return null }
+}
+
+export async function sendMedia(number: string, type: 'image' | 'video' | 'audio' | 'document', file: string, caption?: string, docName?: string) {
+  return request('/send/media', { number, type, file, text: caption ?? '', docName })
+}
+
+export async function markRead(number: string) {
+  try { await request('/chat/read', { number }) } catch (e) { console.error('[UAZAPI] chat/read falhou', number, e) }
+}
+
 export async function notifyQualifiedLead(leadPhone: string, summary: string, guidance: string, personaName = 'Carol') {
   const adminPhone = process.env.ADMIN_PHONE
   if (!adminPhone) return
