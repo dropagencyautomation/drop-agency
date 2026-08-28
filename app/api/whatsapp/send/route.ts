@@ -4,6 +4,7 @@ import { adminClient } from '@/lib/agent/admin'
 import { sendText, sendMedia } from '@/lib/uazapi/client'
 import { upsertMessages, touchChatFromMessage } from '@/lib/inbox/store'
 import { pauseAgent } from '@/lib/inbox/agentLock'
+import { extractSentIds } from '@/lib/inbox/sentIds'
 import type { WaMessageInput } from '@/lib/uazapi/parse'
 
 export const dynamic = 'force-dynamic'
@@ -32,24 +33,36 @@ export async function POST(req: NextRequest) {
 
   const phone = chatId.replace(/@.*$/, '')
   const db = adminClient()
-  await pauseAgent(phone)
 
   let res: Record<string, unknown>
   let input: WaMessageInput
   const now = new Date().toISOString()
-  if (file) {
-    const b64 = Buffer.from(await file.arrayBuffer()).toString('base64')
-    const type = kind(file.type)
-    res = await sendMedia(phone, type, `data:${file.type};base64,${b64}`, text || undefined, type === 'document' ? file.name : undefined, type === 'audio' ? { ptt: true } : undefined)
-    input = { chat_id: chatId, wa_message_id: '', wa_full_id: null, from_me: true, type, text: text || null, media_url: null, media_mime: file.type, media_name: type === 'document' ? file.name : null, status: 'sent', sender_name: null, timestamp: now, raw: res }
-  } else {
-    res = await sendText(phone, text.trim())
-    input = { chat_id: chatId, wa_message_id: '', wa_full_id: null, from_me: true, type: 'text', text: text.trim(), media_url: null, media_mime: null, media_name: null, status: 'sent', sender_name: null, timestamp: now, raw: res }
+  try {
+    if (file) {
+      const b64 = Buffer.from(await file.arrayBuffer()).toString('base64')
+      const type = kind(file.type)
+      res = await sendMedia(phone, type, `data:${file.type};base64,${b64}`, text || undefined, type === 'document' ? file.name : undefined, type === 'audio' ? { ptt: true } : undefined)
+      input = { chat_id: chatId, wa_message_id: '', wa_full_id: null, from_me: true, type, text: text || null, media_url: null, media_mime: file.type, media_name: type === 'document' ? file.name : null, status: 'sent', sender_name: null, timestamp: now, raw: res }
+    } else {
+      res = await sendText(phone, text.trim())
+      input = { chat_id: chatId, wa_message_id: '', wa_full_id: null, from_me: true, type: 'text', text: text.trim(), media_url: null, media_mime: null, media_name: null, status: 'sent', sender_name: null, timestamp: now, raw: res }
+    }
+  } catch (e) {
+    console.error('[INBOX] envio falhou', phone, e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Falha ao enviar' }, { status: 502 })
   }
-  // resposta da Uazapi traz o id da mensagem; formatos vistos: { id: 'OWNER:MSGID' } ou { messageid }
-  const fullId = String((res as { id?: string }).id ?? '')
-  input.wa_full_id = fullId || null
-  input.wa_message_id = String((res as { messageid?: string }).messageid ?? fullId.replace(/^.*:/, '') ?? '') || `crm-${Date.now()}`
+
+  // Só pausa a Carol depois que o envio deu certo — envio que falhou não é atendimento humano.
+  await pauseAgent(phone)
+
+  const { fullId, waMessageId } = extractSentIds(res)
+  if (!waMessageId) {
+    // ponytail: sem id não inventamos um — o eco do webhook grava a linha com o id real.
+    console.warn('[INBOX] envio sem id na resposta da Uazapi, deixando para o eco do webhook', JSON.stringify(res).slice(0, 300))
+    return NextResponse.json({ message: null })
+  }
+  input.wa_full_id = fullId
+  input.wa_message_id = waMessageId
   // /send/media responde com a URL do arquivo em content.URL (verificado); fileURL fica como fallback
   if (file) input.media_url = ((res as { content?: { URL?: string } }).content?.URL) || ((res as { fileURL?: string }).fileURL) || null
 

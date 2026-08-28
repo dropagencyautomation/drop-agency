@@ -40,7 +40,10 @@ export async function upsertMessages(db: Db, msgs: WaMessageInput[], extra: { se
 
 export async function touchChatFromMessage(db: Db, m: WaMessageInput) {
   const { data: chat } = await db.from('wa_chats').select('unread_count,last_message_at').eq('id', m.chat_id).maybeSingle()
-  if (chat?.last_message_at && chat.last_message_at > m.timestamp) return
+  // Compara como data: o banco devolve timestamptz ('2024-01-01 12:00:00+00'),
+  // formato diferente do ISO da mensagem — comparar string dá resultado errado.
+  if (chat?.last_message_at && Date.parse(chat.last_message_at) > Date.parse(m.timestamp)) return
+  // ponytail: contagem pode perder incremento sob concorrência; RPC se incomodar
   await db.from('wa_chats').update({
     last_message_at: m.timestamp,
     last_preview: previewFor(m),

@@ -5,6 +5,7 @@ import { upsertChat, ensureChat, upsertMessages, touchChatFromMessage, updateSta
 import { downloadMedia } from '@/lib/uazapi/client'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   if (req.nextUrl.searchParams.get('secret') !== process.env.WEBHOOK_SECRET) return NextResponse.json({ ok: true })
@@ -17,16 +18,23 @@ export async function POST(req: NextRequest) {
       const raw = body.message ?? body.data ?? body
       const m = parseMessage(raw)
       if (!m || !m.chat_id) return NextResponse.json({ ok: true })
-      if (m.type !== 'text' && m.type !== 'other' && !m.media_url && m.wa_full_id) {
-        const dl = await downloadMedia(m.wa_full_id)
-        if (dl) { m.media_url = dl.fileURL; m.media_mime = m.media_mime ?? dl.mimetype }
-      }
       if (body.chat?.wa_chatid) await upsertChat(db, parseChat(body.chat))
       else await ensureChat(db, m.chat_id, m.from_me ? null : m.sender_name)
       // fromMe sem sent_by = veio da Carol (API) ou do celular; marcamos como IA quando wasSentByApi
       const ai = m.from_me && (raw.wasSentByApi === true || raw.source === 'api')
       await upsertMessages(db, [m], { ai_generated: ai })
       await touchChatFromMessage(db, m)
+      // A mensagem já está gravada: o download da mídia (lento, pode falhar) só
+      // completa a linha depois. Assim o chat nunca perde a mensagem por timeout.
+      if (m.type !== 'text' && m.type !== 'other' && !m.media_url && m.wa_full_id) {
+        const dl = await downloadMedia(m.wa_full_id)
+        if (dl) {
+          const { error } = await db.from('wa_messages')
+            .update({ media_url: dl.fileURL, media_mime: m.media_mime ?? dl.mimetype })
+            .eq('wa_message_id', m.wa_message_id)
+          if (error) console.error('[INBOX] update media', m.wa_message_id, error.message)
+        }
+      }
     } else if (event.includes('update') || event.includes('ack') || event.includes('status')) {
       const u = body.message ?? body.data ?? body
       const id = String(u.messageid ?? u.id ?? '').replace(/^.*:/, '')

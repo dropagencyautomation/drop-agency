@@ -130,6 +130,11 @@ export async function downloadMedia(fullId: string): Promise<{ fileURL: string; 
 }
 
 export async function sendMedia(number: string, type: 'image' | 'video' | 'audio' | 'document', file: string, caption?: string, docName?: string, opts?: { ptt?: boolean }) {
+  // Mesmo marcador do sendText: sem ele o webhook da Carol lê o eco do próprio
+  // envio como mensagem humana e sobrescreve o human_lock de 30 dias por 15 min.
+  // ponytail: Redis fora do ar não pode travar o envio — logamos e seguimos.
+  try { await getRedis().set(`bot:sending:${number}`, '1', 'EX', 15) } catch (e) { console.error('[UAZAPI] bot:sending falhou', number, e) }
+
   return request('/send/media', { number, type, file, text: caption ?? '', docName, ...opts })
 }
 
