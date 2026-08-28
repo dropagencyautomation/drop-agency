@@ -129,8 +129,8 @@ export async function downloadMedia(fullId: string): Promise<{ fileURL: string; 
   } catch (e) { console.error('[UAZAPI] download falhou', fullId, e); return null }
 }
 
-export async function sendMedia(number: string, type: 'image' | 'video' | 'audio' | 'document', file: string, caption?: string, docName?: string) {
-  return request('/send/media', { number, type, file, text: caption ?? '', docName })
+export async function sendMedia(number: string, type: 'image' | 'video' | 'audio' | 'document', file: string, caption?: string, docName?: string, opts?: { ptt?: boolean }) {
+  return request('/send/media', { number, type, file, text: caption ?? '', docName, ...opts })
 }
 
 export async function markRead(number: string) {

@@ -1,12 +1,17 @@
-import Topbar from '@/components/layout/Topbar'
+import { createClient } from '@/lib/supabase/server'
+import type { WaChat } from '@/types/database'
+import Inbox from './Inbox'
 
-export default function WhatsAppPage() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Topbar title="WhatsApp" subtitle="Central de atendimento e conversas" />
-      <div style={{ padding: 24 }}>
-        <p style={{ color: 'var(--muted-foreground)', fontSize: 13 }}>Em breve — chat com leads, agente IA e envio manual.</p>
-      </div>
-    </div>
-  )
+export const dynamic = 'force-dynamic'
+
+export default async function WhatsAppPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: chats } = await supabase
+    .from('wa_chats')
+    .select('*')
+    .order('last_message_at', { ascending: false, nullsFirst: false })
+    .limit(300)
+
+  return <Inbox initialChats={(chats ?? []) as WaChat[]} userId={user?.id ?? ''} />
 }

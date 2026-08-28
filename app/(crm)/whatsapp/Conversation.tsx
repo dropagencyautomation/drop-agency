@@ -1,0 +1,310 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { WaChat, WaMessage } from '@/types/database'
+import MessageBubble from './MessageBubble'
+import { Avatar } from './ChatList'
+
+const EMOJIS = ('😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😗 😚 😙 😋 😛 😜 🤪 😝 🤗 🤔 🤨 😐 😑 ' +
+  '😶 🙄 😏 😣 😥 😮 🤐 😯 😪 😴 😌 😔 🤤 😷 🤒 🥳 🥺 😢 😭 😤 😠 😡 🤯 😳 🥵 🥶 😱 😨 😰 😥 ' +
+  '👍 👎 👌 🤝 🙏 👏 🙌 💪 ✍️ 🤞 ✌️ 🫶 ❤️ 🧡 💛 💚 💙 💜 🔥 ✨ 🎉 🎊 💯 ⚡ ✅ ❌ ⭐ 🚀 💰 📈').split(' ')
+
+const dayKey = (iso: string) => new Date(iso).toDateString()
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso)
+  const today = new Date()
+  if (dayKey(iso) === today.toDateString()) return 'HOJE'
+  if (dayKey(iso) === new Date(today.getTime() - 86400000).toDateString()) return 'ONTEM'
+  return d.toLocaleDateString('pt-BR')
+}
+
+const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+
+const iconBtn: React.CSSProperties = {
+  width: 38, height: 38, borderRadius: '50%', border: 'none', background: 'transparent',
+  color: '#8696a0', fontSize: 19, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+}
+
+interface Props {
+  chat: WaChat
+  messages: WaMessage[]
+  hasMore: boolean
+  agentPaused: boolean
+  onToggleAgent: () => void
+  onSend: (text: string, file: File | null) => Promise<void>
+  onLoadMore: () => void
+  userId: string
+}
+
+export default function Conversation({ chat, messages, hasMore, agentPaused, onToggleAgent, onSend, onLoadMore, userId }: Props) {
+  const [text, setText] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [sending, setSending] = useState(false)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [secs, setSecs] = useState(0)
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const atBottomRef = useRef(true)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const cancelRef = useRef(false)
+
+  // Ancoragem do scroll: sempre no fim ao abrir; ao chegar mensagem, só se já estava no fim.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) { el.scrollTop = el.scrollHeight; atBottomRef.current = true }
+  }, [chat.id])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight
+  }, [messages.length])
+
+  useEffect(() => {
+    const ta = taRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`
+  }, [text])
+
+  useEffect(() => {
+    if (!recording) return
+    const t = setInterval(() => setSecs(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [recording])
+
+  const submit = useCallback(async (t: string, f: File | null) => {
+    if (sending || (!t.trim() && !f)) return
+    setSending(true)
+    try {
+      await onSend(t.trim(), f)
+      setText(''); setFile(null)
+      if (fileRef.current) fileRef.current.value = ''
+      atBottomRef.current = true
+    } catch { /* o Inbox já avisou o erro */ }
+    finally { setSending(false) }
+  }, [onSend, sending])
+
+  function insertEmoji(e: string) {
+    const ta = taRef.current
+    if (!ta) { setText(t => t + e); return }
+    const start = ta.selectionStart ?? text.length
+    const end = ta.selectionEnd ?? start
+    setText(text.slice(0, start) + e + text.slice(end))
+    requestAnimationFrame(() => {
+      ta.focus()
+      ta.selectionStart = ta.selectionEnd = start + e.length
+    })
+  }
+
+  function pickMime(): string {
+    if (typeof MediaRecorder === 'undefined') return ''
+    return ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/ogg', 'audio/mp4']
+      .find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+  }
+
+  async function startRecording() {
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) { alert('Microfone indisponível'); return }
+    let stream: MediaStream
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) }
+    catch { alert('Microfone indisponível'); return }
+
+    const mime = pickMime()
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+    chunksRef.current = []
+    cancelRef.current = false
+    rec.ondataavailable = e => { if (e.data.size) chunksRef.current.push(e.data) }
+    rec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop())
+      setRecording(false); setSecs(0)
+      if (cancelRef.current) return
+      const type = rec.mimeType || 'audio/webm'
+      const blob = new Blob(chunksRef.current, { type })
+      if (!blob.size) return
+      const ext = type.includes('ogg') ? 'ogg' : type.includes('mp4') ? 'm4a' : 'webm'
+      // ponytail: manda o webm/opus cru; se a Uazapi recusar, cai como documento (ver Task 7)
+      void submit('', new File([blob], `voice-${Date.now()}.${ext}`, { type }))
+    }
+    recorderRef.current = rec
+    rec.start()
+    setSecs(0); setRecording(true)
+  }
+
+  function stopRecording(cancel: boolean) {
+    cancelRef.current = cancel
+    recorderRef.current?.stop()
+  }
+
+  const canSend = Boolean(text.trim() || file)
+
+  return (
+    <>
+      {/* Cabeçalho */}
+      <div style={{
+        background: '#202c33', height: 60, flexShrink: 0, padding: '0 16px',
+        display: 'flex', alignItems: 'center', gap: 13,
+      }}>
+        <Avatar url={chat.avatar_url} name={chat.name} phone={chat.phone} size={40} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ color: '#e9edef', fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {chat.name || chat.phone}
+          </div>
+          <div style={{ color: '#8696a0', fontSize: 12 }}>{chat.is_group ? 'Grupo' : chat.phone}</div>
+        </div>
+
+        {chat.lead_id && (
+          <a href="/leads" style={{
+            fontSize: 12, color: '#8696a0', textDecoration: 'none', border: '1px solid #2a3942',
+            borderRadius: 14, padding: '5px 11px', whiteSpace: 'nowrap',
+          }}>🔗 Ver lead</a>
+        )}
+
+        {!chat.is_group && (
+          <button onClick={onToggleAgent} title="Alternar entre a Carol e o atendimento humano"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', whiteSpace: 'nowrap',
+              background: agentPaused ? '#ffb02e1f' : '#00a8841f',
+              border: `1px solid ${agentPaused ? '#ffb02e' : '#00a884'}`,
+              color: agentPaused ? '#ffb02e' : '#00a884',
+              borderRadius: 16, padding: '6px 12px', fontSize: 12, fontWeight: 500,
+            }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+              background: agentPaused ? '#ffb02e' : '#00a884',
+            }} />
+            {agentPaused ? 'Atendimento humano' : 'Carol ativa'}
+            <span style={{ opacity: 0.7, fontSize: 11 }}>{agentPaused ? '▶' : '⏸'}</span>
+          </button>
+        )}
+      </div>
+
+      {/* Mensagens */}
+      <div
+        ref={scrollRef}
+        onScroll={e => {
+          const el = e.currentTarget
+          atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+        }}
+        style={{
+          flex: 1, overflowY: 'auto', minHeight: 0, padding: '12px 8%',
+          background: '#0b141a',
+          backgroundImage: 'radial-gradient(#ffffff08 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+        }}
+      >
+        {hasMore && (
+          <div style={{ textAlign: 'center', margin: '4px 0 12px' }}>
+            <button onClick={onLoadMore} style={{
+              background: '#182229', border: 'none', color: '#8696a0', fontSize: 12,
+              borderRadius: 14, padding: '6px 14px', cursor: 'pointer',
+            }}>Carregar anteriores</button>
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={m.id}>
+            {(i === 0 || dayKey(m.timestamp) !== dayKey(messages[i - 1].timestamp)) && (
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0' }}>
+                <span style={{
+                  background: '#182229', color: '#8696a0', fontSize: 11, fontWeight: 500,
+                  borderRadius: 8, padding: '5px 12px', textTransform: 'uppercase', letterSpacing: '0.03em',
+                }}>{dayLabel(m.timestamp)}</span>
+              </div>
+            )}
+            <MessageBubble m={m} meId={userId} />
+          </div>
+        ))}
+      </div>
+
+      {/* Composer */}
+      {chat.is_group ? (
+        <div style={{
+          background: '#202c33', flexShrink: 0, padding: '18px 16px', textAlign: 'center',
+          color: '#8696a0', fontSize: 13,
+        }}>Envio para grupos indisponível</div>
+      ) : (
+        <div style={{ background: '#202c33', flexShrink: 0, position: 'relative' }}>
+          {emojiOpen && (
+            <>
+              <div onClick={() => setEmojiOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
+              <div style={{
+                position: 'absolute', bottom: '100%', left: 10, zIndex: 11, width: 330, maxHeight: 240,
+                overflowY: 'auto', background: '#233138', border: '1px solid #2a3942', borderRadius: 10,
+                padding: 8, display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2,
+                boxShadow: '0 6px 24px #0008',
+              }}>
+                {EMOJIS.map(e => (
+                  <button key={e} onClick={() => insertEmoji(e)} style={{
+                    background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 19, padding: 3, borderRadius: 5,
+                  }}
+                    onMouseEnter={ev => (ev.currentTarget.style.background = '#2a3942')}
+                    onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
+                  >{e}</button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {file && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
+              borderBottom: '1px solid #2a3942', color: '#e9edef', fontSize: 13,
+            }}>
+              <span style={{ fontSize: 17 }}>📎</span>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {file.name} <span style={{ color: '#8696a0' }}>({Math.round(file.size / 1024)} KB)</span>
+              </span>
+              <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = '' }}
+                style={{ ...iconBtn, width: 26, height: 26, fontSize: 15 }}>✕</button>
+            </div>
+          )}
+
+          {recording ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px' }}>
+              <button onClick={() => stopRecording(true)} style={{ ...iconBtn, color: '#f15c6d' }} title="Cancelar">✕</button>
+              <span style={{
+                width: 9, height: 9, borderRadius: '50%', background: '#f15c6d', flexShrink: 0,
+              }} />
+              <span style={{ flex: 1, color: '#f15c6d', fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
+                {mmss(secs)} · gravando áudio
+              </span>
+              <button onClick={() => stopRecording(false)} style={{ ...iconBtn, color: '#00a884', fontSize: 20 }} title="Enviar">➤</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, padding: '8px 12px' }}>
+              <button onClick={() => setEmojiOpen(o => !o)} style={iconBtn} title="Emojis">😊</button>
+              <button onClick={() => fileRef.current?.click()} style={iconBtn} title="Anexar">📎</button>
+              <input
+                ref={fileRef} type="file" hidden
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+                onChange={e => setFile(e.target.files?.[0] ?? null)}
+              />
+              <textarea
+                ref={taRef} rows={1} value={text} disabled={sending}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(text, file) }
+                }}
+                placeholder="Mensagem"
+                style={{
+                  flex: 1, resize: 'none', background: '#2a3942', border: 'none', outline: 'none',
+                  color: '#e9edef', fontSize: 15, lineHeight: '20px', padding: '9px 12px',
+                  borderRadius: 8, maxHeight: 120, fontFamily: 'inherit',
+                }}
+              />
+              {canSend ? (
+                <button onClick={() => void submit(text, file)} disabled={sending}
+                  style={{ ...iconBtn, color: sending ? '#8696a0' : '#00a884', fontSize: 20 }} title="Enviar">➤</button>
+              ) : (
+                <button onClick={startRecording} disabled={sending} style={iconBtn} title="Gravar áudio">🎤</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  )
+}

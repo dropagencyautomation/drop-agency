@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   if (file) {
     const b64 = Buffer.from(await file.arrayBuffer()).toString('base64')
     const type = kind(file.type)
-    res = await sendMedia(phone, type, `data:${file.type};base64,${b64}`, text || undefined, type === 'document' ? file.name : undefined)
+    res = await sendMedia(phone, type, `data:${file.type};base64,${b64}`, text || undefined, type === 'document' ? file.name : undefined, type === 'audio' ? { ptt: true } : undefined)
     input = { chat_id: chatId, wa_message_id: '', wa_full_id: null, from_me: true, type, text: text || null, media_url: null, media_mime: file.type, media_name: type === 'document' ? file.name : null, status: 'sent', sender_name: null, timestamp: now, raw: res }
   } else {
     res = await sendText(phone, text.trim())
