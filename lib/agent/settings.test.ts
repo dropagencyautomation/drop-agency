@@ -15,12 +15,33 @@ describe('resolveSettings', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(resolveSettings({ business_hours: { start: 'x' } as any }).business_hours).toEqual({ start: 8, end: 19 })
   })
+  it('business_hours fora do intervalo volta ao default', () => {
+    expect(resolveSettings({ business_hours: { start: -5, end: 25 } }).business_hours).toEqual({ start: 8, end: 19 })
+  })
 })
 
 describe('loadAgentConfig', () => {
   it('erro no banco → defaults e lista vazia', async () => {
     const boom = async () => { throw new Error('down') }
     const fake = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: boom, order: boom }) }) }) }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = await loadAgentConfig(fake as any)
+    expect(r.settings).toEqual(DEFAULT_SETTINGS)
+    expect(r.products).toEqual([])
+  })
+
+  it('supabase resolve com { data: null, error } (sem throw) → defaults e lista vazia', async () => {
+    const err = { message: 'boom' }
+    const fake = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: err }),
+            order: async () => ({ data: null, error: err }),
+          }),
+        }),
+      }),
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const r = await loadAgentConfig(fake as any)
     expect(r.settings).toEqual(DEFAULT_SETTINGS)
