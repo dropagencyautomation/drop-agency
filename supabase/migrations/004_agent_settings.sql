@@ -21,12 +21,12 @@ create table if not exists agent_products (
 
 alter table agent_settings enable row level security;
 alter table agent_products enable row level security;
+drop policy if exists "auth read settings" on agent_settings;
 create policy "auth read settings" on agent_settings for select to authenticated using (true);
+drop policy if exists "auth read products" on agent_products;
 create policy "auth read products" on agent_products for select to authenticated using (true);
 -- escrita só via service role (API routes)
 
 -- Seed: 1 linha.
 insert into agent_settings (id) values (1) on conflict (id) do nothing;
-
-insert into storage.buckets (id, name, public) values ('agent-products', 'agent-products', true)
-on conflict (id) do nothing;
+-- Bucket 'agent-products' é criado pela API de upload no primeiro uso (evita depender de permissão em storage.buckets aqui).

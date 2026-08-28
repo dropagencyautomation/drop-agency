@@ -35,7 +35,7 @@ export async function loadAgentConfig(
     settings = error ? DEFAULT_SETTINGS : resolveSettings(data)
   } catch (e) { console.error('[AGENT] settings fallback:', e) }
   try {
-    const { data, error } = await supabase.from('agent_products').select('*').eq('is_active', true).order('sort_order')
+    const { data, error } = await supabase.from('agent_products').select('*').eq('is_active', true).order('sort_order').order('created_at')
     if (error) console.error('[AGENT] products fallback:', error.message)
     products = error ? [] : ((data ?? []) as AgentProduct[])
   } catch (e) { console.error('[AGENT] products fallback:', e) }

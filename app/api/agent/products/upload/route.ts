@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   if (!buckets?.some(b => b.name === 'agent-products')) {
     await supabase.storage.createBucket('agent-products', { public: true, fileSizeLimit: 5242880 })
   }
-  const ext = file.name.split('.').pop() ?? 'jpg'
+  const ext = (file.name.split('.').pop() ?? 'jpg').replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'jpg'
   const path = `${crypto.randomUUID()}.${ext}`
   const { error } = await supabase.storage.from('agent-products').upload(path, await file.arrayBuffer(), { contentType: file.type })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
