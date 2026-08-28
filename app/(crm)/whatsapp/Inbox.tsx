@@ -22,8 +22,11 @@ export default function Inbox({ initialChats, userId }: { initialChats: WaChat[]
   const [syncing, setSyncing] = useState(false)
   const [syncInfo, setSyncInfo] = useState<string | null>(null)
   const activeRef = useRef<string | null>(null)
+  const syncInfoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const active = chats.find(c => c.id === activeId) ?? null
+
+  useEffect(() => () => { if (syncInfoTimerRef.current) clearTimeout(syncInfoTimerRef.current) }, [])
 
   // Tempo real: chats (lista/ordem/não lidas) e mensagens do chat aberto.
   useEffect(() => {
@@ -32,7 +35,9 @@ export default function Inbox({ initialChats, userId }: { initialChats: WaChat[]
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wa_chats' }, payload => {
         const row = payload.new as WaChat
         if (!row?.id) return
-        setChats(cs => [row, ...cs.filter(c => c.id !== row.id)].sort(byRecent))
+        // chat aberto: não deixa o realtime reintroduzir unread_count vindo do servidor
+        const next = row.id === activeRef.current ? { ...row, unread_count: 0 } : row
+        setChats(cs => [next, ...cs.filter(c => c.id !== row.id)].sort(byRecent))
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'wa_messages' }, payload => {
         const row = payload.new as WaMessage
@@ -109,17 +114,22 @@ export default function Inbox({ initialChats, userId }: { initialChats: WaChat[]
   const send = useCallback(async (text: string, file: File | null) => {
     if (!activeId) return
     let res: Response
-    if (file) {
-      const fd = new FormData()
-      fd.append('chatId', activeId)
-      fd.append('file', file)
-      if (text) fd.append('caption', text)
-      res = await fetch('/api/whatsapp/send', { method: 'POST', body: fd })
-    } else {
-      res = await fetch('/api/whatsapp/send', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: activeId, text }),
-      })
+    try {
+      if (file) {
+        const fd = new FormData()
+        fd.append('chatId', activeId)
+        fd.append('file', file)
+        if (text) fd.append('caption', text)
+        res = await fetch('/api/whatsapp/send', { method: 'POST', body: fd })
+      } else {
+        res = await fetch('/api/whatsapp/send', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: activeId, text }),
+        })
+      }
+    } catch (err) {
+      alert('Falha de rede. Tente novamente.')
+      throw err
     }
     const j = await res.json().catch(() => ({}))
     if (!res.ok) { alert(j.error ?? 'Falha ao enviar'); throw new Error(j.error ?? 'falha') }
@@ -142,6 +152,8 @@ export default function Inbox({ initialChats, userId }: { initialChats: WaChat[]
       setSyncInfo('falha na sincronização')
     } finally {
       setSyncing(false)
+      if (syncInfoTimerRef.current) clearTimeout(syncInfoTimerRef.current)
+      syncInfoTimerRef.current = setTimeout(() => setSyncInfo(null), 6000)
     }
   }, [supabase])
 

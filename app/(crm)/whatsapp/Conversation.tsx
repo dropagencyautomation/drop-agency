@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import type { WaChat, WaMessage } from '@/types/database'
 import MessageBubble from './MessageBubble'
 import { Avatar } from './ChatList'
@@ -52,6 +53,15 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const cancelRef = useRef(false)
+  const startingMicRef = useRef(false)
+
+  // Desliga o microfone se o componente desmontar (troca de chat) com gravação em andamento.
+  useEffect(() => () => {
+    cancelRef.current = true
+    const r = recorderRef.current
+    r?.stream.getTracks().forEach(t => t.stop())
+    if (r && r.state !== 'inactive') r.stop()
+  }, [])
 
   // Ancoragem do scroll: sempre no fim ao abrir; ao chegar mensagem, só se já estava no fim.
   useEffect(() => {
@@ -86,7 +96,7 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
       if (fileRef.current) fileRef.current.value = ''
       atBottomRef.current = true
     } catch { /* o Inbox já avisou o erro */ }
-    finally { setSending(false) }
+    finally { setSending(false); taRef.current?.focus() }
   }, [onSend, sending])
 
   function insertEmoji(e: string) {
@@ -108,10 +118,13 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
   }
 
   async function startRecording() {
+    if (recording || startingMicRef.current) return
     if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) { alert('Microfone indisponível'); return }
+    startingMicRef.current = true
     let stream: MediaStream
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) }
     catch { alert('Microfone indisponível'); return }
+    finally { startingMicRef.current = false }
 
     const mime = pickMime()
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
@@ -157,10 +170,10 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
         </div>
 
         {chat.lead_id && (
-          <a href="/leads" style={{
+          <Link href="/leads" style={{
             fontSize: 12, color: '#8696a0', textDecoration: 'none', border: '1px solid #2a3942',
             borderRadius: 14, padding: '5px 11px', whiteSpace: 'nowrap',
-          }}>🔗 Ver lead</a>
+          }}>🔗 Ver lead</Link>
         )}
 
         {!chat.is_group && (

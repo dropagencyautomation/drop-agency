@@ -93,6 +93,10 @@ export default function ChatList({ chats, activeId, search, onSearch, onSelect, 
           const isActive = c.id === activeId
           return (
             <div key={c.id} onClick={() => onSelect(c.id)}
+              role="button" tabIndex={0} aria-label={c.name || c.phone}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(c.id) }
+              }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 13, height: 72, padding: '10px 16px',
                 cursor: 'pointer', background: isActive ? '#2a3942' : 'transparent',
