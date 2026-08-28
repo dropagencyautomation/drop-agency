@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cliente edita persona (nome, tom, estilo), dados institucionais e catálogo de produtos do agente pelo CRM; fluxo de qualificação, ICP, segredos, roteamento e handoff continuam travados no código.
+**Goal:** Cliente edita pelo CRM só campos básicos do agente: nome, horário de atendimento, informações adicionais da empresa e catálogo de produtos (valor, foto). O prompt em si (identidade, tom, comunicação, ICP, fluxo de qualificação, roteamento, handoff) fica inteiro no código do agente.
 
 **Architecture:** Tabelas `agent_settings` (1 linha) e `agent_products`. `SYSTEM_PROMPT` vira `buildSystemPrompt(settings, products)`: esqueleto fixo em código + blocos injetados. Webhook carrega settings uma vez por request; falha de leitura cai nos defaults (que são o prompt atual, byte a byte). UI `/ia` (só admin) com 3 cards; API routes com service role gravam `audit_log`.
 
@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Comportamento em produção após deploy sem tocar na UI deve ser IDÊNTICO ao atual: defaults da migration = texto atual do prompt.
-- Fluxo de qualificação, ICP, segredos, roteamento comercial, agendamento, gatilhos de handoff, objeções, "o que nunca fazer" e regra "para/pra": nunca editáveis, ficam em código.
+- O prompt NÃO é editável pelo CRM. Todas as seções atuais (regra para/pra, identidade, arquétipo, sobre a Drop, ICP, segredos, comunicação, fluxo, roteamento, handoff, objeções) ficam em código. O CRM só injeta: nome da persona, horário, um bloco opcional "INFORMAÇÕES ADICIONAIS" e o catálogo.
 - Prompt atual proíbe revelar preço. `agent_settings.reveal_prices` default `false`: catálogo injetado sem preço e regra mantida. Só com `true` o bloco de catálogo inclui preço e uma frase liberando informar valores do catálogo.
 - Toda escrita de config passa por API route com service role e grava `audit_log`.
 - Só `user_profiles.role = 'admin'` edita.
@@ -60,9 +60,7 @@ export default defineConfig({
 create table if not exists agent_settings (
   id int primary key default 1 check (id = 1),
   persona_name text not null default 'Carol',
-  tone text not null default '',
-  style text not null default '',
-  institutional_info text not null default '',
+  extra_info text not null default '',
   business_hours jsonb not null default '{"start":8,"end":19}',
   reveal_prices boolean not null default false,
   updated_by uuid references auth.users(id),
@@ -87,15 +85,14 @@ create policy "auth read settings" on agent_settings for select to authenticated
 create policy "auth read products" on agent_products for select to authenticated using (true);
 -- escrita só via service role (API routes)
 
--- Seed: 1 linha. Textos preenchidos na Task 2 (defaults em código são a fonte; o seed
--- em SQL é só para a linha existir — a aplicação usa defaults quando o campo vier vazio).
+-- Seed: 1 linha.
 insert into agent_settings (id) values (1) on conflict (id) do nothing;
 
 insert into storage.buckets (id, name, public) values ('agent-products', 'agent-products', true)
 on conflict (id) do nothing;
 ```
 
-Nota: campos `tone`/`style`/`institutional_info` vazios significam "usar default do código". Assim o seed não precisa duplicar 60 linhas de prompt em SQL.
+Nota: `extra_info` vazio = nenhum bloco extra injetado.
 
 - [ ] **Step 4: Tipos**
 
@@ -104,9 +101,7 @@ Append em `types/database.ts`:
 export interface AgentSettings {
   id: 1
   persona_name: string
-  tone: string
-  style: string
-  institutional_info: string
+  extra_info: string
   business_hours: { start: number; end: number }
   reveal_prices: boolean
   updated_by: string | null
@@ -150,36 +145,19 @@ git commit -m "feat: tabelas agent_settings/agent_products, tipos e vitest"
 **Interfaces:**
 - Produces:
   - `DEFAULT_SETTINGS: AgentSettings`
-  - `DEFAULT_TONE: string`, `DEFAULT_STYLE: string`, `DEFAULT_INSTITUTIONAL: string`
-  - `resolveSettings(row: Partial<AgentSettings> | null): AgentSettings` — campos vazios/null → default.
+  - `resolveSettings(row: Partial<AgentSettings> | null): AgentSettings` — campos inválidos → default.
   - `loadAgentConfig(supabase): Promise<{ settings: AgentSettings; products: AgentProduct[] }>` — nunca lança; erro → defaults + `[]`.
 
-- [ ] **Step 1: Defaults extraídos do prompt atual**
+- [ ] **Step 1: Defaults**
 
-`lib/agent/defaults.ts`. Copiar TEXTO EXATO de `lib/openai/agent.ts` (commit cf83e8f):
-- `DEFAULT_INSTITUTIONAL` = linhas 36–69 (do "A DROP AGENCY é uma agência estratégica..." até o fim da lista "DIFERENCIAIS DA DROP", exclusive a linha de "━━━" seguinte).
-- `DEFAULT_TONE` = linhas 112–119 (bloco "TOM:" com seus bullets).
-- `DEFAULT_STYLE` = linhas 121–131 ("PALAVRAS PROIBIDAS", "VOCABULÁRIO DROP", "FORMATO"). A frase sobre "pra" fica aqui também (é duplicada no head fixo, sem problema).
-
+`lib/agent/defaults.ts`:
 ```ts
 import type { AgentSettings } from '@/types/database'
-
-export const DEFAULT_INSTITUTIONAL = `A DROP AGENCY é uma agência estratégica de marketing, posicionamento e crescimento digital.
-... (colar linhas 36–69 exatas)`
-
-export const DEFAULT_TONE = `TOM:
-- Consultivo, estratégico, próximo, humano. Nunca robótico.
-... (colar linhas 112–119 exatas)`
-
-export const DEFAULT_STYLE = `PALAVRAS PROIBIDAS (nunca use, em nenhuma situação):
-... (colar linhas 121–131 exatas)`
 
 export const DEFAULT_SETTINGS: AgentSettings = {
   id: 1,
   persona_name: 'Carol',
-  tone: DEFAULT_TONE,
-  style: DEFAULT_STYLE,
-  institutional_info: DEFAULT_INSTITUTIONAL,
+  extra_info: '',
   business_hours: { start: 8, end: 19 },
   reveal_prices: false,
   updated_by: null,
@@ -193,26 +171,27 @@ export const DEFAULT_SETTINGS: AgentSettings = {
 ```ts
 import { describe, it, expect } from 'vitest'
 import { resolveSettings, loadAgentConfig } from './settings'
-import { DEFAULT_SETTINGS, DEFAULT_TONE } from './defaults'
+import { DEFAULT_SETTINGS } from './defaults'
 
 describe('resolveSettings', () => {
   it('null → defaults', () => {
     expect(resolveSettings(null)).toEqual(DEFAULT_SETTINGS)
   })
-  it('campo vazio usa default, campo preenchido vence', () => {
-    const s = resolveSettings({ persona_name: 'Bia', tone: '', style: 'curto' })
-    expect(s.persona_name).toBe('Bia')
-    expect(s.tone).toBe(DEFAULT_TONE)
-    expect(s.style).toBe('curto')
+  it('campo preenchido vence, persona vazio vira Carol', () => {
+    const s = resolveSettings({ persona_name: '  ', extra_info: 'Estacionamento próprio.' })
+    expect(s.persona_name).toBe('Carol')
+    expect(s.extra_info).toBe('Estacionamento próprio.')
   })
-  it('persona_name vazio vira Carol', () => {
-    expect(resolveSettings({ persona_name: '  ' }).persona_name).toBe('Carol')
+  it('business_hours inválido volta ao default', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(resolveSettings({ business_hours: { start: 'x' } as any }).business_hours).toEqual({ start: 8, end: 19 })
   })
 })
 
 describe('loadAgentConfig', () => {
   it('erro no banco → defaults e lista vazia', async () => {
-    const fake = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => { throw new Error('down') } }), order: async () => { throw new Error('down') } }) }) }
+    const boom = async () => { throw new Error('down') }
+    const fake = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: boom, order: boom }) }) }) }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const r = await loadAgentConfig(fake as any)
     expect(r.settings).toEqual(DEFAULT_SETTINGS)
@@ -234,19 +213,16 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AgentSettings, AgentProduct } from '@/types/database'
 import { DEFAULT_SETTINGS } from './defaults'
 
-const txt = (v: unknown, d: string) => (typeof v === 'string' && v.trim() ? v : d)
-
 export function resolveSettings(row: Partial<AgentSettings> | null): AgentSettings {
   if (!row) return DEFAULT_SETTINGS
-  const bh = row.business_hours && typeof row.business_hours.start === 'number' && typeof row.business_hours.end === 'number'
-    ? row.business_hours : DEFAULT_SETTINGS.business_hours
+  const bh = row.business_hours
+  const validBh = !!bh && typeof bh.start === 'number' && typeof bh.end === 'number' && bh.start < bh.end
+  const name = typeof row.persona_name === 'string' ? row.persona_name.trim() : ''
   return {
     id: 1,
-    persona_name: txt(row.persona_name, DEFAULT_SETTINGS.persona_name).trim(),
-    tone: txt(row.tone, DEFAULT_SETTINGS.tone),
-    style: txt(row.style, DEFAULT_SETTINGS.style),
-    institutional_info: txt(row.institutional_info, DEFAULT_SETTINGS.institutional_info),
-    business_hours: bh,
+    persona_name: name || DEFAULT_SETTINGS.persona_name,
+    extra_info: typeof row.extra_info === 'string' ? row.extra_info.trim() : '',
+    business_hours: validBh ? bh : DEFAULT_SETTINGS.business_hours,
     reveal_prices: row.reveal_prices === true,
     updated_by: row.updated_by ?? null,
     updated_at: row.updated_at ?? DEFAULT_SETTINGS.updated_at,
@@ -270,8 +246,6 @@ export async function loadAgentConfig(
   return { settings, products }
 }
 ```
-
-Se o fake do teste não bater com a cadeia `.eq().maybeSingle()` / `.eq().order()`, ajuste o fake (não o código) para a cadeia acima.
 
 - [ ] **Step 5: Rodar, ver passar**
 
@@ -300,7 +274,6 @@ git commit -m "feat: defaults e loader de configuração do agente"
   - `processMessage(conversation, userMessage, config: { settings: AgentSettings; products: AgentProduct[] })`
   - `generateLeadSummary(history, qualification, personaName: string)`
   - `generateHandoffGuidance(history, qualification, personaName: string)`
-  - `extractQualificationData` interno passa a receber `personaName`.
 
 - [ ] **Step 1: Teste**
 
@@ -313,19 +286,23 @@ import { DEFAULT_SETTINGS } from '@/lib/agent/defaults'
 const prod = { id: '1', name: 'Site institucional', description: 'Site de até 5 páginas', price: 'R$ 4.000', photo_url: null, is_active: true, sort_order: 0, created_at: '', updated_at: '' }
 
 describe('buildSystemPrompt', () => {
-  it('mantém blocos fixos', () => {
+  it('defaults sem produtos = prompt original', () => {
     const p = buildSystemPrompt(DEFAULT_SETTINGS, [])
-    for (const h of ['REGRA ABSOLUTA E INEGOCIÁVEL', 'ARQUÉTIPO', 'PERFIL IDEAL DE CLIENTE', 'O QUE VOCÊ NUNCA PODE REVELAR', 'FLUXO DE QUALIFICAÇÃO', 'ROTEAMENTO COMERCIAL', 'GATILHOS DE ESCALADA', 'O QUE VOCÊ NUNCA DEVE FAZER']) {
+    for (const h of ['REGRA ABSOLUTA E INEGOCIÁVEL', 'IDENTIDADE', 'ARQUÉTIPO', 'SOBRE A DROP AGENCY', 'PERFIL IDEAL DE CLIENTE', 'O QUE VOCÊ NUNCA PODE REVELAR', 'COMO VOCÊ DEVE SE COMUNICAR', 'FLUXO DE QUALIFICAÇÃO', 'ROTEAMENTO COMERCIAL', 'GATILHOS DE ESCALADA', 'O QUE VOCÊ NUNCA DEVE FAZER']) {
       expect(p).toContain(h)
     }
+    expect(p).toContain('Seu nome é Carol')
     expect(p).not.toContain('CATÁLOGO')
+    expect(p).not.toContain('INFORMAÇÕES ADICIONAIS')
   })
-  it('injeta persona, institucional e horário', () => {
-    const p = buildSystemPrompt({ ...DEFAULT_SETTINGS, persona_name: 'Bia', institutional_info: 'Empresa X faz Y.', business_hours: { start: 9, end: 18 } }, [])
+  it('injeta nome, horário e informações adicionais', () => {
+    const p = buildSystemPrompt({ ...DEFAULT_SETTINGS, persona_name: 'Bia', extra_info: 'Estacionamento próprio.', business_hours: { start: 9, end: 18 } }, [])
     expect(p).toContain('Seu nome é Bia')
-    expect(p).toContain('Empresa X faz Y.')
+    expect(p).toContain('Apresente-se como Bia')
+    expect(p).not.toContain('Carol')
     expect(p).toContain('9h às 18h')
-    expect(p).not.toContain('Seu nome é Carol')
+    expect(p).toContain('INFORMAÇÕES ADICIONAIS')
+    expect(p).toContain('Estacionamento próprio.')
   })
   it('catálogo sem preço quando reveal_prices=false', () => {
     const p = buildSystemPrompt(DEFAULT_SETTINGS, [prod])
@@ -346,55 +323,34 @@ describe('buildSystemPrompt', () => {
 Run: `npm test`
 Expected: FAIL "buildSystemPrompt is not a function".
 
-- [ ] **Step 3: Refatorar o prompt**
+- [ ] **Step 3: Refatorar o prompt (mudança mínima)**
 
-Em `lib/openai/agent.ts`, substituir `const SYSTEM_PROMPT = \`...\`` (linhas 6–226) por constantes fixas + builder. Texto fixo copiado EXATO das linhas indicadas; só as seções editáveis saem.
+Em `lib/openai/agent.ts`:
 
+1. Trocar `const SYSTEM_PROMPT = \`...\`` por `const SYSTEM_PROMPT_TEMPLATE = (name: string) => \`...\`` com o MESMO texto, substituindo cada ocorrência literal de "Carol" dentro do template por `${name}` (linhas 6, 19 duas vezes, 136). Nada mais muda no texto.
+
+2. Acrescentar antes de `processMessage`:
 ```ts
 import type { AgentSettings, AgentProduct } from '@/types/database'
 
 const SEP = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
-// linhas 6–16 (abertura + regra para/pra), sem o nome fixo "Carol" na primeira linha:
-const FIXED_HEAD = (name: string) => `Você é ${name}, do time de atendimento da DROP AGENCY, responsável pelo primeiro contato, triagem e qualificação de leads via WhatsApp.
-
+function hoursBlock(s: AgentSettings): string {
+  return `${SEP}
+HORÁRIO DE ATENDIMENTO
 ${SEP}
-REGRA ABSOLUTA E INEGOCIÁVEL: "PARA", NUNCA "PRA"
+A empresa atende das ${s.business_hours.start}h às ${s.business_hours.end}h (horário de Brasília). Fora desse horário, avise que o time humano responde no próximo horário comercial e siga a conversa normalmente.`
+}
+
+function extraInfoBlock(s: AgentSettings): string {
+  if (!s.extra_info) return ''
+  return `${SEP}
+INFORMAÇÕES ADICIONAIS DA EMPRESA (fornecidas pelo time, use quando fizer sentido)
 ${SEP}
-... (linhas 9–16 exatas)`
+${s.extra_info}`
+}
 
-const IDENTITY = (name: string) => `${SEP}
-IDENTIDADE
-${SEP}
-Seu nome é ${name}. Na primeira mensagem da conversa, apresente-se como "${name}, do time de atendimento da Drop Agency", diga que vai entender um pouco melhor o momento do lead para ver como pode ajudar, e pergunte o nome dele.
-Assim que o lead disser o nome, use-o pelo resto da conversa. Nunca use "doutor(a)" ou qualquer tratamento genérico como padrão, só use um tratamento assim se o próprio lead pedir.
-Você não é a Camila. Camila é quem assume o atendimento depois do handoff, quando fizer sentido.`
-
-const FIXED_ARCHETYPE = `${SEP}
-ARQUÉTIPO — quem você é de verdade
-${SEP}
-... (linhas 27–31 exatas)`
-
-const ABOUT = (s: AgentSettings) => `${SEP}
-SOBRE A EMPRESA
-${SEP}
-${s.institutional_info}
-
-HORÁRIO DE ATENDIMENTO: ${s.business_hours.start}h às ${s.business_hours.end}h (horário de Brasília). Fora desse horário, avise que o time responde no próximo horário comercial.`
-
-const FIXED_ICP_AND_SECRETS = `${SEP}
-PERFIL IDEAL DE CLIENTE (ICP) — uso interno, nunca comunique isso ao lead
-${SEP}
-... (linhas 74–107 exatas: ICP + "O QUE VOCÊ NUNCA PODE REVELAR")`
-
-const COMMUNICATION = (s: AgentSettings) => `${SEP}
-COMO VOCÊ DEVE SE COMUNICAR
-${SEP}
-${s.tone}
-
-${s.style}`
-
-const CATALOG = (s: AgentSettings, products: AgentProduct[]) => {
+function catalogBlock(s: AgentSettings, products: AgentProduct[]): string {
   if (products.length === 0) return ''
   const lines = products.map(p =>
     `- ${p.name}${p.description ? `: ${p.description}` : ''}${s.reveal_prices && p.price ? ` (${p.price})` : ''}`
@@ -410,31 +366,22 @@ ${lines.join('\n')}
 ${rule}`
 }
 
-// linhas 133–226 exatas, com "Carol" trocado por ${name} na ETAPA 1:
-const FIXED_FLOW = (name: string) => `${SEP}
-FLUXO DE QUALIFICAÇÃO
-${SEP}
-ETAPA 1 — ABERTURA
-Apresente-se como ${name}, do time de atendimento da Drop Agency. Pergunte o nome do lead antes de qualquer outra coisa. Demonstre interesse genuíno no negócio dele.
-... (restante das linhas 138–226 exatas)`
-
 export function buildSystemPrompt(settings: AgentSettings, products: AgentProduct[]): string {
-  const n = settings.persona_name
   return [
-    FIXED_HEAD(n), IDENTITY(n), FIXED_ARCHETYPE, ABOUT(settings),
-    FIXED_ICP_AND_SECRETS, COMMUNICATION(settings), CATALOG(settings, products), FIXED_FLOW(n),
+    SYSTEM_PROMPT_TEMPLATE(settings.persona_name),
+    hoursBlock(settings),
+    extraInfoBlock(settings),
+    catalogBlock(settings, products),
   ].filter(Boolean).join('\n\n')
 }
 ```
 
-Cuidado: o texto entre crases contém crases? Não (verificado). Contém `${`? Não. Mas contém aspas e caracteres unicode: manter.
-
 - [ ] **Step 4: Persona nas funções auxiliares**
 
-Trocar `'Carol'` hardcoded:
-- linha 323 e 366: `m.role === 'user' ? 'Lead' : personaName`
+Trocar `'Carol'` hardcoded fora do template:
+- linhas 323 e 366: `m.role === 'user' ? 'Lead' : personaName`
 - linha 325: `` `${personaName}: ${assistantReply}` ``
-- `EXTRACTION_SYSTEM_PROMPT`, `SUMMARY_SYSTEM_PROMPT`, `GUIDANCE_SYSTEM_PROMPT` (linhas 228–290): onde aparece "Carol", trocar por `${name}` transformando a constante em função `(name: string) => \`...\``.
+- `EXTRACTION_SYSTEM_PROMPT`, `SUMMARY_SYSTEM_PROMPT`, `GUIDANCE_SYSTEM_PROMPT` (linhas 228–290): onde aparece "Carol", virar função `(name: string) => \`...\`` com `${name}`.
 
 Assinaturas:
 ```ts
@@ -458,7 +405,7 @@ Expected: testes passam; tsc falha só em `app/api/webhook/whatsapp/route.ts` (c
 
 ```bash
 git add lib/openai/agent.ts lib/openai/agent.test.ts
-git commit -m "feat: prompt do agente montado a partir de agent_settings e catálogo"
+git commit -m "feat: prompt do agente recebe nome, horário, informações extras e catálogo"
 ```
 
 ---
@@ -520,9 +467,9 @@ git commit -m "feat: webhook carrega configuração do agente por request"
 **Interfaces:**
 - Produces:
   - `requireAdmin(): Promise<{ ok: true; userId: string; name: string } | { ok: false; res: NextResponse }>`
-  - `GET /api/agent/settings` → `{ settings: AgentSettings, products: AgentProduct[], defaults: { tone, style, institutional_info } }`
-  - `PATCH /api/agent/settings` body `Partial<Pick<AgentSettings,'persona_name'|'tone'|'style'|'institutional_info'|'business_hours'|'reveal_prices'>>` → `{ settings }`
-  - `POST /api/agent/settings` body `{ action: 'reset' }` → zera campos de texto (usa defaults) e `persona_name='Carol'`, `reveal_prices=false`.
+  - `GET /api/agent/settings` → `{ settings: AgentSettings, products: AgentProduct[] }`
+  - `PATCH /api/agent/settings` body `Partial<Pick<AgentSettings,'persona_name'|'extra_info'|'business_hours'|'reveal_prices'>>` → `{ settings }`
+  - `POST /api/agent/settings` body `{ action: 'reset' }` → `persona_name='Carol'`, `extra_info=''`, horário 8–19, `reveal_prices=false`.
   - `POST /api/agent/products` body `{ name, description?, price?, photo_url?, is_active?, sort_order? }` → `{ product }`
   - `PATCH /api/agent/products` body `{ id, ...campos }` → `{ product }`
   - `DELETE /api/agent/products?id=` → `{ success: true }`
@@ -567,15 +514,13 @@ export async function audit(userId: string, userName: string, action: string, re
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, adminClient, audit } from '@/lib/agent/admin'
 import { loadAgentConfig } from '@/lib/agent/settings'
-import { DEFAULT_TONE, DEFAULT_STYLE, DEFAULT_INSTITUTIONAL } from '@/lib/agent/defaults'
-
 export const dynamic = 'force-dynamic'
-const EDITABLE = ['persona_name', 'tone', 'style', 'institutional_info', 'business_hours', 'reveal_prices'] as const
+const EDITABLE = ['persona_name', 'extra_info', 'business_hours', 'reveal_prices'] as const
 
 export async function GET() {
   const auth = await requireAdmin(); if (!auth.ok) return auth.res
   const { settings, products } = await loadAgentConfig(adminClient())
-  return NextResponse.json({ settings, products, defaults: { tone: DEFAULT_TONE, style: DEFAULT_STYLE, institutional_info: DEFAULT_INSTITUTIONAL } })
+  return NextResponse.json({ settings, products })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -601,7 +546,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin(); if (!auth.ok) return auth.res
   const { action } = await req.json()
   if (action !== 'reset') return NextResponse.json({ error: 'Ação inválida' }, { status: 400 })
-  const reset = { persona_name: 'Carol', tone: '', style: '', institutional_info: '', business_hours: { start: 8, end: 19 }, reveal_prices: false, updated_by: auth.userId, updated_at: new Date().toISOString() }
+  const reset = { persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 }, reveal_prices: false, updated_by: auth.userId, updated_at: new Date().toISOString() }
   const { error } = await adminClient().from('agent_settings').update(reset).eq('id', 1)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   await audit(auth.userId, auth.name, 'RESET_AGENT_SETTINGS', 'agent_settings', '1', null)
@@ -717,8 +662,8 @@ git commit -m "feat: API de configuração do agente (settings, produtos, upload
 import Topbar from '@/components/layout/Topbar'
 import { createClient } from '@/lib/supabase/server'
 import { adminClient } from '@/lib/agent/admin'
-import { loadAgentConfig } from '@/lib/agent/settings'
-import { DEFAULT_TONE, DEFAULT_STYLE, DEFAULT_INSTITUTIONAL } from '@/lib/agent/defaults'
+import { resolveSettings } from '@/lib/agent/settings'
+import type { AgentProduct } from '@/types/database'
 import AgentConfigClient from './AgentConfigClient'
 
 export const dynamic = 'force-dynamic'
@@ -728,14 +673,16 @@ export default async function IaPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user!.id).single()
   const isAdmin = profile?.role === 'admin'
-  const { settings, products } = await loadAgentConfig(adminClient())
+  const admin = adminClient()
+  const { data: row } = await admin.from('agent_settings').select('*').eq('id', 1).maybeSingle()
+  const { data: products } = await admin.from('agent_products').select('*').order('sort_order')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <Topbar title="Agente IA" subtitle="Persona, informações da empresa e catálogo usados pelo agente no WhatsApp" />
+      <Topbar title="Agente IA" subtitle="Nome, horário, informações da empresa e catálogo usados pelo agente no WhatsApp" />
       <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
         {isAdmin ? (
-          <AgentConfigClient initialSettings={settings} initialProducts={products} defaults={{ tone: DEFAULT_TONE, style: DEFAULT_STYLE, institutional_info: DEFAULT_INSTITUTIONAL }} />
+          <AgentConfigClient initialSettings={resolveSettings(row)} initialProducts={(products ?? []) as AgentProduct[]} />
         ) : (
           <p style={{ color: 'var(--muted-foreground)', fontSize: 13 }}>Somente administradores podem editar o agente.</p>
         )}
@@ -744,8 +691,6 @@ export default async function IaPage() {
   )
 }
 ```
-
-Nota: `loadAgentConfig` com `adminClient()` (não SSR) porque produtos inativos também precisam aparecer na tela; ajuste: nessa página buscar produtos direto: `adminClient().from('agent_products').select('*').order('sort_order')` e passar todos.
 
 - [ ] **Step 2: Client principal**
 
@@ -756,14 +701,13 @@ import { useState } from 'react'
 import type { AgentSettings, AgentProduct } from '@/types/database'
 import ProductsCard from './ProductsCard'
 
-type Defaults = { tone: string; style: string; institutional_info: string }
 const card: React.CSSProperties = { padding: 20, marginBottom: 20 }
 const label: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted-foreground)', marginBottom: 6 }
 const input: React.CSSProperties = { width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#F9FAFB', fontSize: 13, fontFamily: 'inherit', outline: 'none' }
 const btn: React.CSSProperties = { padding: '10px 16px', borderRadius: 8, border: 'none', background: '#E0332B', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }
 const btnGhost: React.CSSProperties = { ...btn, background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'var(--muted-foreground)' }
 
-export default function AgentConfigClient({ initialSettings, initialProducts, defaults }: { initialSettings: AgentSettings; initialProducts: AgentProduct[]; defaults: Defaults }) {
+export default function AgentConfigClient({ initialSettings, initialProducts }: { initialSettings: AgentSettings; initialProducts: AgentProduct[] }) {
   const [s, setS] = useState(initialSettings)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -773,37 +717,27 @@ export default function AgentConfigClient({ initialSettings, initialProducts, de
   async function save() {
     setSaving(true); setMsg('')
     const res = await fetch('/api/agent/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ persona_name: s.persona_name, tone: s.tone, style: s.style, institutional_info: s.institutional_info, business_hours: s.business_hours, reveal_prices: s.reveal_prices }) })
+      body: JSON.stringify({ persona_name: s.persona_name, extra_info: s.extra_info, business_hours: s.business_hours, reveal_prices: s.reveal_prices }) })
     const j = await res.json()
     setMsg(res.ok ? 'Salvo. Vale a partir da próxima mensagem recebida.' : j.error ?? 'Erro')
     setSaving(false)
   }
 
   async function reset() {
-    if (!confirm('Restaurar todos os textos para o padrão original?')) return
+    if (!confirm('Restaurar nome, horário e informações para o padrão?')) return
     setSaving(true)
     await fetch('/api/agent/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) })
-    setS(p => ({ ...p, persona_name: 'Carol', tone: defaults.tone, style: defaults.style, institutional_info: defaults.institutional_info, business_hours: { start: 8, end: 19 }, reveal_prices: false }))
+    setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 }, reveal_prices: false }))
     setMsg('Padrão restaurado.'); setSaving(false)
   }
 
   return (
     <div style={{ maxWidth: 860 }}>
       <div className="card-premium" style={card}>
-        <h3 style={{ margin: '0 0 14px', fontSize: 14 }}>Persona</h3>
+        <h3 style={{ margin: '0 0 14px', fontSize: 14 }}>Agente</h3>
         <label style={label}>Nome do agente</label>
         <input style={{ ...input, marginBottom: 14 }} value={s.persona_name} onChange={e => set('persona_name', e.target.value)} />
-        <label style={label}>Tom de voz</label>
-        <textarea style={{ ...input, minHeight: 140, marginBottom: 14 }} value={s.tone} onChange={e => set('tone', e.target.value)} />
-        <label style={label}>Estilo de comunicação</label>
-        <textarea style={{ ...input, minHeight: 160 }} value={s.style} onChange={e => set('style', e.target.value)} />
-      </div>
-
-      <div className="card-premium" style={card}>
-        <h3 style={{ margin: '0 0 14px', fontSize: 14 }}>Informações da empresa</h3>
-        <label style={label}>Sobre a empresa, serviços, diferenciais</label>
-        <textarea style={{ ...input, minHeight: 200, marginBottom: 14 }} value={s.institutional_info} onChange={e => set('institutional_info', e.target.value)} />
-        <div style={{ display: 'flex', gap: 12, alignItems: 'end' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'end', marginBottom: 14 }}>
           <div><label style={label}>Abre (h)</label><input type="number" min={0} max={23} style={{ ...input, width: 90 }} value={s.business_hours.start} onChange={e => set('business_hours', { ...s.business_hours, start: Number(e.target.value) })} /></div>
           <div><label style={label}>Fecha (h)</label><input type="number" min={1} max={24} style={{ ...input, width: 90 }} value={s.business_hours.end} onChange={e => set('business_hours', { ...s.business_hours, end: Number(e.target.value) })} /></div>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginLeft: 16 }}>
@@ -811,6 +745,8 @@ export default function AgentConfigClient({ initialSettings, initialProducts, de
             Agente pode informar valores do catálogo
           </label>
         </div>
+        <label style={label}>Informações adicionais da empresa (endereço, formas de contato, avisos)</label>
+        <textarea style={{ ...input, minHeight: 120 }} value={s.extra_info} onChange={e => set('extra_info', e.target.value)} />
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 28 }}>
@@ -907,7 +843,7 @@ export default function ProductsCard({ initial, styles: st }: { initial: AgentPr
 
 - [ ] **Step 5: Verificar no browser**
 
-Run: `npx tsc --noEmit && npm run lint`. Abrir `http://localhost:3000/ia` logado como admin: editar nome para "Bia", salvar, recarregar → persiste. Adicionar produto com foto → aparece na lista e em `agent_products`. "Restaurar padrão" → textos voltam. Logar como colaborador → mensagem "Somente administradores".
+Run: `npx tsc --noEmit && npm run lint`. Abrir `http://localhost:3000/ia` logado como admin: editar nome para "Bia", salvar, recarregar → persiste. Adicionar produto com foto → aparece na lista e em `agent_products`. "Restaurar padrão" → nome volta a Carol. Logar como colaborador → mensagem "Somente administradores".
 
 `<img>` gera warning do eslint-config-next (`@next/next/no-img-element`); aceitar com `// eslint-disable-next-line @next/next/no-img-element` nas duas linhas.
 
@@ -915,7 +851,7 @@ Run: `npx tsc --noEmit && npm run lint`. Abrir `http://localhost:3000/ia` logado
 
 ```bash
 git add "app/(crm)/ia" components/layout/Sidebar.tsx
-git commit -m "feat: tela Agente IA para editar persona, empresa e catálogo"
+git commit -m "feat: tela Agente IA para editar nome, horário, informações e catálogo"
 ```
 
 ---
