@@ -18,7 +18,6 @@ export function resolveSettings(row: Partial<AgentSettings> | null): AgentSettin
     persona_name: name || DEFAULT_SETTINGS.persona_name,
     extra_info: typeof row.extra_info === 'string' ? row.extra_info.trim() : '',
     business_hours: validBh ? bh : DEFAULT_SETTINGS.business_hours,
-    reveal_prices: row.reveal_prices === true,
     updated_by: row.updated_by ?? null,
     updated_at: row.updated_at ?? DEFAULT_SETTINGS.updated_at,
   }

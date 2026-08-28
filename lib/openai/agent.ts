@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import type { AiConversation, QualificationData, LeadProfile, AgentSettings, AgentProduct } from '@/types/database'
+import { DEFAULT_SETTINGS } from '@/lib/agent/defaults'
 
 const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4.1'
 
@@ -269,10 +270,16 @@ Não invente informação que não apareceu na conversa. Se faltar algo, simples
 const SEP = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
 function hoursBlock(s: AgentSettings): string {
+  if (
+    s.business_hours.start === DEFAULT_SETTINGS.business_hours.start &&
+    s.business_hours.end === DEFAULT_SETTINGS.business_hours.end
+  ) {
+    return ''
+  }
   return `${SEP}
 HORÁRIO DE ATENDIMENTO
 ${SEP}
-A empresa atende das ${s.business_hours.start}h às ${s.business_hours.end}h (horário de Brasília). Fora desse horário, avise que o time humano responde no próximo horário comercial e siga a conversa normalmente.`
+Se o lead perguntar sobre horário de atendimento, informe que a empresa atende das ${s.business_hours.start}h às ${s.business_hours.end}h (horário de Brasília).`
 }
 
 function extraInfoBlock(s: AgentSettings): string {
@@ -283,14 +290,10 @@ ${SEP}
 ${s.extra_info}`
 }
 
-function catalogBlock(s: AgentSettings, products: AgentProduct[]): string {
+function catalogBlock(products: AgentProduct[]): string {
   if (products.length === 0) return ''
-  const lines = products.map(
-    (p) => `- ${p.name}${p.description ? `: ${p.description}` : ''}${s.reveal_prices && p.price ? ` (${p.price})` : ''}`
-  )
-  const rule = s.reveal_prices
-    ? 'Você pode informar os valores do catálogo acima quando o lead perguntar. Serviços fora do catálogo continuam sem valor, orçados na sessão estratégica.'
-    : 'Use o catálogo só para entender e descrever o que a empresa oferece. Continua valendo a regra de nunca informar valores.'
+  const lines = products.map((p) => `- ${p.name}${p.description ? `: ${p.description}` : ''}`)
+  const rule = 'Use o catálogo só para entender e descrever o que a empresa oferece. Continua valendo a regra de nunca informar valores.'
   return `${SEP}
 CATÁLOGO DE PRODUTOS E SERVIÇOS
 ${SEP}
@@ -304,7 +307,7 @@ export function buildSystemPrompt(settings: AgentSettings, products: AgentProduc
     SYSTEM_PROMPT_TEMPLATE(settings.persona_name),
     hoursBlock(settings),
     extraInfoBlock(settings),
-    catalogBlock(settings, products),
+    catalogBlock(products),
   ]
     .filter(Boolean)
     .join('\n\n')

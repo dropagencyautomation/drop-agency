@@ -5,7 +5,6 @@ export const DEFAULT_SETTINGS: AgentSettings = {
   persona_name: 'Carol',
   extra_info: '',
   business_hours: { start: 8, end: 19 },
-  reveal_prices: false,
   updated_by: null,
   updated_at: '1970-01-01T00:00:00Z',
 }

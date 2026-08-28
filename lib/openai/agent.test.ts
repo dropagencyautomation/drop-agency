@@ -13,25 +13,33 @@ describe('buildSystemPrompt', () => {
     expect(p).toContain('Seu nome é Carol')
     expect(p).not.toContain('CATÁLOGO')
     expect(p).not.toContain('INFORMAÇÕES ADICIONAIS')
+    expect(p).not.toContain('HORÁRIO DE ATENDIMENTO')
   })
   it('injeta nome, horário e informações adicionais', () => {
     const p = buildSystemPrompt({ ...DEFAULT_SETTINGS, persona_name: 'Bia', extra_info: 'Estacionamento próprio.', business_hours: { start: 9, end: 18 } }, [])
     expect(p).toContain('Seu nome é Bia')
     expect(p).toContain('Apresente-se como Bia')
     expect(p).not.toContain('Carol')
-    expect(p).toContain('9h às 18h')
+    expect(p).toContain('HORÁRIO DE ATENDIMENTO')
+    expect(p).toContain('das 9h às 18h')
     expect(p).toContain('INFORMAÇÕES ADICIONAIS')
     expect(p).toContain('Estacionamento próprio.')
   })
-  it('catálogo sem preço quando reveal_prices=false', () => {
+  it('catálogo nunca inclui preço, mesmo com produto com preço', () => {
     const p = buildSystemPrompt(DEFAULT_SETTINGS, [prod])
     expect(p).toContain('CATÁLOGO')
     expect(p).toContain('Site institucional')
     expect(p).not.toContain('R$ 4.000')
+    expect(p).toContain('Continua valendo a regra de nunca informar valores.')
   })
-  it('catálogo com preço quando reveal_prices=true', () => {
-    const p = buildSystemPrompt({ ...DEFAULT_SETTINGS, reveal_prices: true }, [prod])
-    expect(p).toContain('R$ 4.000')
-    expect(p).toContain('pode informar os valores do catálogo')
+  it('produto sem descrição e sem preço renderiza só o nome, sem pontuação sobrando', () => {
+    const empty = { ...prod, description: '', price: '' }
+    const p = buildSystemPrompt(DEFAULT_SETTINGS, [empty])
+    expect(p).toContain('- Site institucional')
+    expect(p).not.toContain('- Site institucional:')
+    expect(p).not.toContain('- Site institucional (')
+  })
+  it('guarda de identidade do prompt; se mudar de propósito, atualize', () => {
+    expect(buildSystemPrompt(DEFAULT_SETTINGS, []).length).toBe(16657)
   })
 })

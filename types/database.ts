@@ -154,7 +154,6 @@ export interface AgentSettings {
   persona_name: string
   extra_info: string
   business_hours: { start: number; end: number }
-  reveal_prices: boolean
   updated_by: string | null
   updated_at: string
 }

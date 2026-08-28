@@ -3,7 +3,6 @@ create table if not exists agent_settings (
   persona_name text not null default 'Carol',
   extra_info text not null default '',
   business_hours jsonb not null default '{"start":8,"end":19}',
-  reveal_prices boolean not null default false,
   updated_by uuid references auth.users(id),
   updated_at timestamptz not null default now()
 );
