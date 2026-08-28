@@ -1,5 +1,7 @@
 'use client'
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import InboxLoader from '@/app/(crm)/whatsapp/InboxLoader'
+import AgentConfigLoader from '@/app/(crm)/ia/AgentConfigLoader'
 import { createBrowserClient } from '@supabase/ssr'
 
 const sb = createBrowserClient(
@@ -174,6 +176,8 @@ const NAV_ICONS: Record<string,React.ReactNode> = {
   marketing:     <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 12L6 7l3 3 2-4 3 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".8"/></svg>,
   equipe:        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.4" opacity=".8"/><circle cx="11" cy="5" r="2" stroke="currentColor" strokeWidth="1.2" opacity=".5"/><path d="M1 13c0-2.2 2.24-4 5-4s5 1.8 5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity=".8"/><path d="M11 9c1.5 0 3 .9 3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".5"/></svg>,
   tarefas:       <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".8"/><circle cx="13" cy="11" r="2.5" stroke="currentColor" strokeWidth="1.3" opacity=".8"/><path d="M12 11l.7.7 1.3-1.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".8"/></svg>,
+  whatsapp:      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.5a6.5 6.5 0 0 0-5.6 9.8L1.5 14.5l3.3-.9A6.5 6.5 0 1 0 8 1.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" opacity=".8"/><path d="M5.8 6.2c.2 1.6 1.6 3.2 3.4 3.7l.9-.9 1.3.6-.2 1.1c-2.8.4-5.9-2.7-5.6-5.5l1.1-.2.6 1.3z" fill="currentColor" opacity=".8"/></svg>,
+  agente:        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="5" width="11" height="8" rx="2.5" stroke="currentColor" strokeWidth="1.4" opacity=".8"/><circle cx="6" cy="9" r="1" fill="currentColor"/><circle cx="10" cy="9" r="1" fill="currentColor"/><path d="M8 5V2.5M6.5 2.5h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity=".8"/></svg>,
   administracao: <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1L9.5 5h4l-3.25 2.5 1.25 4L8 9l-3.5 2.5 1.25-4L2.5 5h4z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" opacity=".8"/></svg>,
 }
 
@@ -955,6 +959,17 @@ export default function DropCRM() {
             </div>
           )}
 
+          {hasPerm('crm')&&(
+            <div style={{fontSize:9,fontWeight:600,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.15em',padding:'12px 14px 8px'}}>ATENDIMENTO</div>
+          )}
+          {hasPerm('crm')&&<div style={navStyle('whatsapp')} onClick={()=>setPanel('whatsapp')}>
+            <span style={{color:panel==='whatsapp'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['whatsapp']}</span>WhatsApp
+          </div>}
+          {(currentUser?.role==='admin'||currentUser===null)&&<div style={navStyle('agente')} onClick={()=>setPanel('agente')}>
+            <span style={{color:panel==='agente'?'#E53E3E':'#4B5563',display:'flex'}}>{NAV_ICONS['agente']}</span>Agente IA
+            <span style={{marginLeft:'auto',fontSize:8,fontWeight:700,background:'rgba(229,62,62,0.15)',color:'#E53E3E',padding:'1px 5px',borderRadius:99}}>IA</span>
+          </div>}
+
           {[
             {id:'tarefas',perm:'tarefas'},{id:'projetos',perm:'projetos'},
             {id:'marketing',perm:'marketing'},{id:'equipe',perm:'equipe'}
@@ -1098,6 +1113,9 @@ export default function DropCRM() {
         </div>
 
         <div style={{flex:1,overflowY:'auto',overflowX:'hidden'}}>
+
+          {panel==='whatsapp'&&hasPerm('crm')&&<InboxLoader/>}
+          {panel==='agente'&&currentUser?.role==='admin'&&<AgentConfigLoader/>}
 
           {/* ── DASHBOARD ── */}
           {panel==='dashboard'&&hasPerm('dashboard')&&(

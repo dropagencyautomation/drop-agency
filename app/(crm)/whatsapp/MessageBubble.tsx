@@ -2,7 +2,7 @@
 
 import type { WaMessage } from '@/types/database'
 
-const NAME_COLORS = ['#53bdeb', '#dfb0ea', '#e542a3', '#00a884', '#ffb02e', '#7ec9ff', '#c4b5fd', '#f6a58a']
+const NAME_COLORS = ['#53bdeb', '#dfb0ea', '#e542a3', '#E53E3E', '#ffb02e', '#7ec9ff', '#c4b5fd', '#f6a58a']
 const colorFor = (name: string) => {
   let h = 0
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
@@ -43,7 +43,7 @@ export default function MessageBubble({ m, meId }: { m: WaMessage; meId?: string
         <div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={m.media_url} alt="sticker" style={{ width: 160, height: 160, objectFit: 'contain' }} />
-          <div style={{ textAlign: 'right', fontSize: 11, color: '#8696a0' }}>{hhmm(m.timestamp)}</div>
+          <div style={{ textAlign: 'right', fontSize: 11, color: '#9CA3AF' }}>{hhmm(m.timestamp)}</div>
         </div>
       </div>
     )
@@ -52,8 +52,8 @@ export default function MessageBubble({ m, meId }: { m: WaMessage; meId?: string
   return (
     <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', margin: '3px 0' }}>
       <div style={{
-        maxWidth: '65%', background: mine ? '#005c4b' : '#202c33', color: '#e9edef',
-        borderRadius: 8, padding: '6px 8px 8px', boxShadow: '0 1px .5px #0b141a',
+        maxWidth: '65%', background: mine ? '#3b1212' : '#111111', color: '#F9FAFB',
+        borderRadius: 8, padding: '6px 8px 8px', boxShadow: '0 1px .5px #070707',
         fontSize: 14.2, lineHeight: 1.4, minWidth: 90,
       }}>
         {!mine && m.sender_name && (
@@ -77,7 +77,7 @@ export default function MessageBubble({ m, meId }: { m: WaMessage; meId?: string
           <a href={m.media_url ?? '#'} target="_blank" rel="noreferrer" download
             style={{
               display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
-              background: '#ffffff14', borderRadius: 6, padding: '10px 12px', color: '#e9edef', minWidth: 220,
+              background: '#ffffff14', borderRadius: 6, padding: '10px 12px', color: '#F9FAFB', minWidth: 220,
             }}>
             <span style={{ fontSize: 22 }}>📄</span>
             <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -86,7 +86,7 @@ export default function MessageBubble({ m, meId }: { m: WaMessage; meId?: string
           </a>
         )}
         {(m.type === 'other' || (m.type !== 'text' && !m.media_url)) && (
-          <div style={{ fontSize: 13, color: '#8696a0', fontStyle: 'italic' }}>
+          <div style={{ fontSize: 13, color: '#9CA3AF', fontStyle: 'italic' }}>
             {m.type === 'other' ? 'Mensagem não suportada' : 'Mídia indisponível'}
           </div>
         )}
@@ -99,7 +99,7 @@ export default function MessageBubble({ m, meId }: { m: WaMessage; meId?: string
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginTop: 2, height: 15 }}>
           {m.ai_generated && (
-            <span style={{ fontSize: 9, color: '#00a884', border: '1px solid #00a884', borderRadius: 3, padding: '0 3px', lineHeight: '12px' }}>IA</span>
+            <span style={{ fontSize: 9, color: '#E53E3E', border: '1px solid #E53E3E', borderRadius: 3, padding: '0 3px', lineHeight: '12px' }}>IA</span>
           )}
           {m.sent_by && (
             <span style={{ fontSize: 9, color: '#ffffff99', border: '1px solid #ffffff40', borderRadius: 3, padding: '0 3px', lineHeight: '12px' }}>
