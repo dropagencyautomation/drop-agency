@@ -14,5 +14,5 @@ export default function InboxLoader() {
     ]).then(([u, c]) => setData({ chats: (c.data ?? []) as WaChat[], userId: u.data.user?.id ?? '' }))
   }, [])
   if (!data) return <div style={{ padding: 28, color: '#9CA3AF', fontSize: 13 }}>Carregando conversas...</div>
-  return <div style={{ height: '100%' }}><Inbox initialChats={data.chats} userId={data.userId} /></div>
+  return <div style={{ height: 'calc(100vh - 56px)', minHeight: 0 }}><Inbox initialChats={data.chats} userId={data.userId} /></div>
 }
