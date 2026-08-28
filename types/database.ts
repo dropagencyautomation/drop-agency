@@ -169,3 +169,39 @@ export interface AgentProduct {
   created_at: string
   updated_at: string
 }
+
+export type WaMessageType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'sticker' | 'other'
+export type WaStatus = 'sent' | 'delivered' | 'read' | 'failed'
+
+export interface WaChat {
+  id: string
+  phone: string
+  name: string | null
+  avatar_url: string | null
+  is_group: boolean
+  lead_id: string | null
+  last_message_at: string | null
+  last_preview: string | null
+  unread_count: number
+  updated_at: string
+}
+
+export interface WaMessage {
+  id: string
+  chat_id: string
+  wa_message_id: string
+  wa_full_id: string | null
+  from_me: boolean
+  type: WaMessageType
+  text: string | null
+  media_url: string | null
+  media_mime: string | null
+  media_name: string | null
+  status: WaStatus
+  sent_by: string | null
+  ai_generated: boolean
+  sender_name: string | null
+  timestamp: string
+  raw: unknown
+  created_at: string
+}
