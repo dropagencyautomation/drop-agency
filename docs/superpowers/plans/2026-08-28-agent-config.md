@@ -12,7 +12,7 @@
 
 - Comportamento em produção após deploy sem tocar na UI deve ser IDÊNTICO ao atual: defaults da migration = texto atual do prompt.
 - O prompt NÃO é editável pelo CRM. Todas as seções atuais (regra para/pra, identidade, arquétipo, sobre a Drop, ICP, segredos, comunicação, fluxo, roteamento, handoff, objeções) ficam em código. O CRM só injeta: nome da persona, horário, um bloco opcional "INFORMAÇÕES ADICIONAIS" e o catálogo.
-- Prompt atual proíbe revelar preço. `agent_settings.reveal_prices` default `false`: catálogo injetado sem preço e regra mantida. Só com `true` o bloco de catálogo inclui preço e uma frase liberando informar valores do catálogo.
+- Prompt atual proíbe revelar preço e essa regra não muda: catálogo entra no prompt SEM preço. `agent_products.price` é só para humanos (CRM/inbox). Não existe `reveal_prices`.
 - Toda escrita de config passa por API route com service role e grava `audit_log`.
 - Só `user_profiles.role = 'admin'` edita.
 - Estilo de UI: inline styles + classes existentes (`card-premium`, vars `--border`, `--muted-foreground`), igual às páginas atuais. Sem libs novas de UI.
@@ -468,8 +468,8 @@ git commit -m "feat: webhook carrega configuração do agente por request"
 - Produces:
   - `requireAdmin(): Promise<{ ok: true; userId: string; name: string } | { ok: false; res: NextResponse }>`
   - `GET /api/agent/settings` → `{ settings: AgentSettings, products: AgentProduct[] }`
-  - `PATCH /api/agent/settings` body `Partial<Pick<AgentSettings,'persona_name'|'extra_info'|'business_hours'|'reveal_prices'>>` → `{ settings }`
-  - `POST /api/agent/settings` body `{ action: 'reset' }` → `persona_name='Carol'`, `extra_info=''`, horário 8–19, `reveal_prices=false`.
+  - `PATCH /api/agent/settings` body `Partial<Pick<AgentSettings,'persona_name'|'extra_info'|'business_hours'>>` → `{ settings }`
+  - `POST /api/agent/settings` body `{ action: 'reset' }` → `persona_name='Carol'`, `extra_info=''`, horário 8–19.
   - `POST /api/agent/products` body `{ name, description?, price?, photo_url?, is_active?, sort_order? }` → `{ product }`
   - `PATCH /api/agent/products` body `{ id, ...campos }` → `{ product }`
   - `DELETE /api/agent/products?id=` → `{ success: true }`
@@ -515,7 +515,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, adminClient, audit } from '@/lib/agent/admin'
 import { loadAgentConfig } from '@/lib/agent/settings'
 export const dynamic = 'force-dynamic'
-const EDITABLE = ['persona_name', 'extra_info', 'business_hours', 'reveal_prices'] as const
+const EDITABLE = ['persona_name', 'extra_info', 'business_hours'] as const
 
 export async function GET() {
   const auth = await requireAdmin(); if (!auth.ok) return auth.res
@@ -546,7 +546,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin(); if (!auth.ok) return auth.res
   const { action } = await req.json()
   if (action !== 'reset') return NextResponse.json({ error: 'Ação inválida' }, { status: 400 })
-  const reset = { persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 }, reveal_prices: false, updated_by: auth.userId, updated_at: new Date().toISOString() }
+  const reset = { persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 }, updated_by: auth.userId, updated_at: new Date().toISOString() }
   const { error } = await adminClient().from('agent_settings').update(reset).eq('id', 1)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   await audit(auth.userId, auth.name, 'RESET_AGENT_SETTINGS', 'agent_settings', '1', null)
@@ -717,7 +717,7 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
   async function save() {
     setSaving(true); setMsg('')
     const res = await fetch('/api/agent/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ persona_name: s.persona_name, extra_info: s.extra_info, business_hours: s.business_hours, reveal_prices: s.reveal_prices }) })
+      body: JSON.stringify({ persona_name: s.persona_name, extra_info: s.extra_info, business_hours: s.business_hours }) })
     const j = await res.json()
     setMsg(res.ok ? 'Salvo. Vale a partir da próxima mensagem recebida.' : j.error ?? 'Erro')
     setSaving(false)
@@ -727,7 +727,7 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
     if (!confirm('Restaurar nome, horário e informações para o padrão?')) return
     setSaving(true)
     await fetch('/api/agent/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) })
-    setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 }, reveal_prices: false }))
+    setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 } }))
     setMsg('Padrão restaurado.'); setSaving(false)
   }
 
@@ -740,10 +740,7 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
         <div style={{ display: 'flex', gap: 12, alignItems: 'end', marginBottom: 14 }}>
           <div><label style={label}>Abre (h)</label><input type="number" min={0} max={23} style={{ ...input, width: 90 }} value={s.business_hours.start} onChange={e => set('business_hours', { ...s.business_hours, start: Number(e.target.value) })} /></div>
           <div><label style={label}>Fecha (h)</label><input type="number" min={1} max={24} style={{ ...input, width: 90 }} value={s.business_hours.end} onChange={e => set('business_hours', { ...s.business_hours, end: Number(e.target.value) })} /></div>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginLeft: 16 }}>
-            <input type="checkbox" checked={s.reveal_prices} onChange={e => set('reveal_prices', e.target.checked)} />
-            Agente pode informar valores do catálogo
-          </label>
+          <span style={{ fontSize: 12, color: 'var(--muted-foreground)', marginLeft: 16, paddingBottom: 10 }}>Padrão 8h–19h. O agente só menciona horário quando alterado.</span>
         </div>
         <label style={label}>Informações adicionais da empresa (endereço, formas de contato, avisos)</label>
         <textarea style={{ ...input, minHeight: 120 }} value={s.extra_info} onChange={e => set('extra_info', e.target.value)} />
@@ -820,7 +817,7 @@ export default function ProductsCard({ initial, styles: st }: { initial: AgentPr
       <div style={{ marginTop: 18, display: 'grid', gap: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 600 }}>{form.id ? 'Editar produto' : 'Novo produto'}</div>
         <input style={st.input} placeholder="Nome" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-        <input style={st.input} placeholder="Valor (ex: R$ 2.500 ou a partir de R$ 900/mês)" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+        <input style={st.input} placeholder="Valor (uso interno; o agente nunca informa preço)" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
         <textarea style={{ ...st.input, minHeight: 70 }} placeholder="Descrição" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <input type="file" accept="image/*" onChange={e => e.target.files?.[0] && upload(e.target.files[0])} />
