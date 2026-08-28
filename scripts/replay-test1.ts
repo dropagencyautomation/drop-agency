@@ -7,6 +7,7 @@
 
 import 'dotenv/config'
 import { processMessage, computeLeadScore } from '../lib/openai/agent'
+import { DEFAULT_SETTINGS } from '../lib/agent/defaults'
 import type { AiConversation } from '../types/database'
 
 const LEAD_MESSAGES = [
@@ -41,7 +42,8 @@ async function main() {
   for (const [i, userMessage] of LEAD_MESSAGES.entries()) {
     const { reply, replyChunks, updatedQualification, shouldHandoff } = await processMessage(
       conversation,
-      userMessage
+      userMessage,
+      { settings: DEFAULT_SETTINGS, products: [] }
     )
 
     console.log(`\n=== Turno ${i + 1} ===`)
