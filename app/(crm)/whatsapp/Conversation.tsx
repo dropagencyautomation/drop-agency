@@ -249,8 +249,8 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
                 padding: 8, display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2,
                 boxShadow: '0 6px 24px #0008',
               }}>
-                {EMOJIS.map(e => (
-                  <button key={e} onClick={() => insertEmoji(e)} style={{
+                {EMOJIS.map((e, i) => (
+                  <button key={i} onClick={() => insertEmoji(e)} style={{
                     background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 19, padding: 3, borderRadius: 5,
                   }}
                     onMouseEnter={ev => (ev.currentTarget.style.background = '#1a1a1a')}
