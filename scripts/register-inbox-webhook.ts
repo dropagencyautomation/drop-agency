@@ -14,7 +14,7 @@ const h = { 'Content-Type': 'application/json', token }
 async function main() {
   const list = await fetch(`${base}/webhook`, { headers: h }).then(r => r.json())
   if (Array.isArray(list) && list.some((w: { url?: string }) => w.url === url)) { console.log('já registrado'); return }
-  const r = await fetch(`${base}/webhook`, { method: 'POST', headers: h, body: JSON.stringify({ url, events: ['messages', 'messages_update'], excludeMessages: [], enabled: true }) })
+  const r = await fetch(`${base}/webhook`, { method: 'POST', headers: h, body: JSON.stringify({ action: 'add', url, events: ['messages', 'messages_update'], excludeMessages: [], enabled: true }) // action:'add' obrigatório — sem ele a Uazapi SUBSTITUI o webhook existente (o da Carol) })
   console.log(r.status, await r.text())
 }
 main()
