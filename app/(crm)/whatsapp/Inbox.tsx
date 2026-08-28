@@ -158,15 +158,15 @@ export default function Inbox({ initialChats, userId }: { initialChats: WaChat[]
   }, [supabase])
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '30% 1fr', height: '100dvh', overflow: 'hidden', background: '#0b141a' }}>
-      <div style={{ background: '#111b21', borderRight: '1px solid #222d34', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '30% 1fr', height: '100vh', overflow: 'hidden', background: '#070707' }}>
+      <div style={{ background: '#0a0a0a', borderRight: '1px solid #1f1f1f', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <ChatList
           chats={chats} activeId={activeId} search={search}
           onSearch={setSearch} onSelect={selectChat}
           onSync={sync} syncing={syncing} syncInfo={syncInfo}
         />
       </div>
-      <div style={{ background: '#0b141a', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ background: '#070707', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {active ? (
           <Conversation
             key={active.id}
@@ -175,9 +175,9 @@ export default function Inbox({ initialChats, userId }: { initialChats: WaChat[]
             onSend={send} onLoadMore={loadMore} userId={userId}
           />
         ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, color: '#8696a0' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, color: '#9CA3AF' }}>
             <div style={{ fontSize: 56, opacity: 0.35 }}>💬</div>
-            <div style={{ fontSize: 20, color: '#e9edef', fontWeight: 300 }}>Selecione uma conversa</div>
+            <div style={{ fontSize: 20, color: '#F9FAFB', fontWeight: 300 }}>Selecione uma conversa</div>
             <div style={{ fontSize: 13 }}>Escolha um chat à esquerda para ver o histórico e responder.</div>
           </div>
         )}

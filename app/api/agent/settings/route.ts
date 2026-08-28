@@ -6,8 +6,10 @@ const EDITABLE = ['persona_name', 'extra_info', 'business_hours'] as const
 
 export async function GET() {
   const auth = await requireAdmin(); if (!auth.ok) return auth.res
-  const { settings, products } = await loadAgentConfig(adminClient())
-  return NextResponse.json({ settings, products })
+  const admin = adminClient()
+  const { settings } = await loadAgentConfig(admin)
+  const { data: products } = await admin.from('agent_products').select('*').order('sort_order').order('created_at')
+  return NextResponse.json({ settings, products: products ?? [] })
 }
 
 export async function PATCH(req: NextRequest) {

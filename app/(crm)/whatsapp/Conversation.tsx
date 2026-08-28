@@ -24,7 +24,7 @@ const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${St
 
 const iconBtn: React.CSSProperties = {
   width: 38, height: 38, borderRadius: '50%', border: 'none', background: 'transparent',
-  color: '#8696a0', fontSize: 19, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  color: '#9CA3AF', fontSize: 19, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
 }
 
 interface Props {
@@ -158,20 +158,20 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
     <>
       {/* Cabeçalho */}
       <div style={{
-        background: '#202c33', height: 60, flexShrink: 0, padding: '0 16px',
+        background: '#111111', height: 60, flexShrink: 0, padding: '0 16px',
         display: 'flex', alignItems: 'center', gap: 13,
       }}>
         <Avatar url={chat.avatar_url} name={chat.name} phone={chat.phone} size={40} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ color: '#e9edef', fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ color: '#F9FAFB', fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {chat.name || chat.phone}
           </div>
-          <div style={{ color: '#8696a0', fontSize: 12 }}>{chat.is_group ? 'Grupo' : chat.phone}</div>
+          <div style={{ color: '#9CA3AF', fontSize: 12 }}>{chat.is_group ? 'Grupo' : chat.phone}</div>
         </div>
 
         {chat.lead_id && (
           <Link href="/leads" style={{
-            fontSize: 12, color: '#8696a0', textDecoration: 'none', border: '1px solid #2a3942',
+            fontSize: 12, color: '#9CA3AF', textDecoration: 'none', border: '1px solid #1a1a1a',
             borderRadius: 14, padding: '5px 11px', whiteSpace: 'nowrap',
           }}>🔗 Ver lead</Link>
         )}
@@ -180,14 +180,14 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
           <button onClick={onToggleAgent} title="Alternar entre a Carol e o atendimento humano"
             style={{
               display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', whiteSpace: 'nowrap',
-              background: agentPaused ? '#ffb02e1f' : '#00a8841f',
-              border: `1px solid ${agentPaused ? '#ffb02e' : '#00a884'}`,
-              color: agentPaused ? '#ffb02e' : '#00a884',
+              background: agentPaused ? '#ffb02e1f' : '#E53E3E1f',
+              border: `1px solid ${agentPaused ? '#ffb02e' : '#E53E3E'}`,
+              color: agentPaused ? '#ffb02e' : '#E53E3E',
               borderRadius: 16, padding: '6px 12px', fontSize: 12, fontWeight: 500,
             }}>
             <span style={{
               width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-              background: agentPaused ? '#ffb02e' : '#00a884',
+              background: agentPaused ? '#ffb02e' : '#E53E3E',
             }} />
             {agentPaused ? 'Atendimento humano' : 'Carol ativa'}
             <span style={{ opacity: 0.7, fontSize: 11 }}>{agentPaused ? '▶' : '⏸'}</span>
@@ -204,7 +204,7 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
         }}
         style={{
           flex: 1, overflowY: 'auto', minHeight: 0, padding: '12px 8%',
-          background: '#0b141a',
+          background: '#070707',
           backgroundImage: 'radial-gradient(#ffffff08 1px, transparent 1px)',
           backgroundSize: '24px 24px',
         }}
@@ -212,7 +212,7 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
         {hasMore && (
           <div style={{ textAlign: 'center', margin: '4px 0 12px' }}>
             <button onClick={onLoadMore} style={{
-              background: '#182229', border: 'none', color: '#8696a0', fontSize: 12,
+              background: '#1a1a1a', border: 'none', color: '#9CA3AF', fontSize: 12,
               borderRadius: 14, padding: '6px 14px', cursor: 'pointer',
             }}>Carregar anteriores</button>
           </div>
@@ -222,7 +222,7 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
             {(i === 0 || dayKey(m.timestamp) !== dayKey(messages[i - 1].timestamp)) && (
               <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0' }}>
                 <span style={{
-                  background: '#182229', color: '#8696a0', fontSize: 11, fontWeight: 500,
+                  background: '#1a1a1a', color: '#9CA3AF', fontSize: 11, fontWeight: 500,
                   borderRadius: 8, padding: '5px 12px', textTransform: 'uppercase', letterSpacing: '0.03em',
                 }}>{dayLabel(m.timestamp)}</span>
               </div>
@@ -235,17 +235,17 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
       {/* Composer */}
       {chat.is_group ? (
         <div style={{
-          background: '#202c33', flexShrink: 0, padding: '18px 16px', textAlign: 'center',
-          color: '#8696a0', fontSize: 13,
+          background: '#111111', flexShrink: 0, padding: '18px 16px', textAlign: 'center',
+          color: '#9CA3AF', fontSize: 13,
         }}>Envio para grupos indisponível</div>
       ) : (
-        <div style={{ background: '#202c33', flexShrink: 0, position: 'relative' }}>
+        <div style={{ background: '#111111', flexShrink: 0, position: 'relative' }}>
           {emojiOpen && (
             <>
               <div onClick={() => setEmojiOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
               <div style={{
                 position: 'absolute', bottom: '100%', left: 10, zIndex: 11, width: 330, maxHeight: 240,
-                overflowY: 'auto', background: '#233138', border: '1px solid #2a3942', borderRadius: 10,
+                overflowY: 'auto', background: '#233138', border: '1px solid #1a1a1a', borderRadius: 10,
                 padding: 8, display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2,
                 boxShadow: '0 6px 24px #0008',
               }}>
@@ -253,7 +253,7 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
                   <button key={e} onClick={() => insertEmoji(e)} style={{
                     background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 19, padding: 3, borderRadius: 5,
                   }}
-                    onMouseEnter={ev => (ev.currentTarget.style.background = '#2a3942')}
+                    onMouseEnter={ev => (ev.currentTarget.style.background = '#1a1a1a')}
                     onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
                   >{e}</button>
                 ))}
@@ -264,11 +264,11 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
           {file && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
-              borderBottom: '1px solid #2a3942', color: '#e9edef', fontSize: 13,
+              borderBottom: '1px solid #1a1a1a', color: '#F9FAFB', fontSize: 13,
             }}>
               <span style={{ fontSize: 17 }}>📎</span>
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {file.name} <span style={{ color: '#8696a0' }}>({Math.round(file.size / 1024)} KB)</span>
+                {file.name} <span style={{ color: '#9CA3AF' }}>({Math.round(file.size / 1024)} KB)</span>
               </span>
               <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = '' }}
                 style={{ ...iconBtn, width: 26, height: 26, fontSize: 15 }}>✕</button>
@@ -284,7 +284,7 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
               <span style={{ flex: 1, color: '#f15c6d', fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>
                 {mmss(secs)} · gravando áudio
               </span>
-              <button onClick={() => stopRecording(false)} style={{ ...iconBtn, color: '#00a884', fontSize: 20 }} title="Enviar">➤</button>
+              <button onClick={() => stopRecording(false)} style={{ ...iconBtn, color: '#E53E3E', fontSize: 20 }} title="Enviar">➤</button>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, padding: '8px 12px' }}>
@@ -303,14 +303,14 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
                 }}
                 placeholder="Mensagem"
                 style={{
-                  flex: 1, resize: 'none', background: '#2a3942', border: 'none', outline: 'none',
-                  color: '#e9edef', fontSize: 15, lineHeight: '20px', padding: '9px 12px',
+                  flex: 1, resize: 'none', background: '#1a1a1a', border: 'none', outline: 'none',
+                  color: '#F9FAFB', fontSize: 15, lineHeight: '20px', padding: '9px 12px',
                   borderRadius: 8, maxHeight: 120, fontFamily: 'inherit',
                 }}
               />
               {canSend ? (
                 <button onClick={() => void submit(text, file)} disabled={sending}
-                  style={{ ...iconBtn, color: sending ? '#8696a0' : '#00a884', fontSize: 20 }} title="Enviar">➤</button>
+                  style={{ ...iconBtn, color: sending ? '#9CA3AF' : '#E53E3E', fontSize: 20 }} title="Enviar">➤</button>
               ) : (
                 <button onClick={startRecording} disabled={sending} style={iconBtn} title="Gravar áudio">🎤</button>
               )}
