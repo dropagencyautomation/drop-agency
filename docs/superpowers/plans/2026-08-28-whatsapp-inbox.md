@@ -642,7 +642,8 @@ export async function POST(req: NextRequest) {
   const fullId = String((res as { id?: string }).id ?? '')
   input.wa_full_id = fullId || null
   input.wa_message_id = String((res as { messageid?: string }).messageid ?? fullId.replace(/^.*:/, '') ?? '') || `crm-${Date.now()}`
-  if (file && (res as { fileURL?: string }).fileURL) input.media_url = (res as { fileURL: string }).fileURL
+  // /send/media responde com a URL do arquivo em content.URL (verificado); fileURL fica como fallback
+  if (file) input.media_url = ((res as { content?: { URL?: string } }).content?.URL) || ((res as { fileURL?: string }).fileURL) || null
 
   await upsertMessages(db, [input], { sent_by: auth.userId })
   await touchChatFromMessage(db, input)
