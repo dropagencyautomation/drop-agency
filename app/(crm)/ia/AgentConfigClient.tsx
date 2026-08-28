@@ -18,19 +18,32 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
 
   async function save() {
     setSaving(true); setMsg('')
-    const res = await fetch('/api/agent/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ persona_name: s.persona_name, extra_info: s.extra_info, business_hours: s.business_hours }) })
-    const j = await res.json()
-    setMsg(res.ok ? 'Salvo. Vale a partir da próxima mensagem recebida.' : j.error ?? 'Erro')
-    setSaving(false)
+    try {
+      const res = await fetch('/api/agent/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ persona_name: s.persona_name, extra_info: s.extra_info, business_hours: s.business_hours }) })
+      const j = await res.json()
+      setMsg(res.ok ? 'Salvo. Vale a partir da próxima mensagem recebida.' : j.error ?? 'Erro')
+    } catch {
+      setMsg('Falha de rede. Tente novamente.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function reset() {
     if (!confirm('Restaurar nome, horário e informações para o padrão?')) return
     setSaving(true)
-    await fetch('/api/agent/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) })
-    setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 } }))
-    setMsg('Padrão restaurado.'); setSaving(false)
+    try {
+      const res = await fetch('/api/agent/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) })
+      const j = await res.json()
+      if (!res.ok) { setMsg(j.error ?? 'Erro'); return }
+      setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 } }))
+      setMsg('Padrão restaurado.')
+    } catch {
+      setMsg('Falha de rede. Tente novamente.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

@@ -11,27 +11,45 @@ export default function ProductsCard({ initial, styles: st }: { initial: AgentPr
   const [busy, setBusy] = useState(false)
 
   async function upload(file: File) {
-    const fd = new FormData(); fd.append('file', file)
-    const res = await fetch('/api/agent/products/upload', { method: 'POST', body: fd })
-    const j = await res.json()
-    if (res.ok) setForm(f => ({ ...f, photo_url: j.url })); else alert(j.error)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch('/api/agent/products/upload', { method: 'POST', body: fd })
+      const j = await res.json()
+      if (res.ok) setForm(f => ({ ...f, photo_url: j.url })); else alert(j.error)
+    } catch {
+      alert('Falha de rede. Tente novamente.')
+    }
   }
 
   async function submit() {
     if (!form.name.trim()) return alert('Nome obrigatório')
     setBusy(true)
-    const method = form.id ? 'PATCH' : 'POST'
-    const res = await fetch('/api/agent/products', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
-    const j = await res.json()
-    if (!res.ok) { alert(j.error); setBusy(false); return }
-    setItems(list => form.id ? list.map(p => p.id === form.id ? j.product : p) : [...list, j.product])
-    setForm(empty); setBusy(false)
+    try {
+      const method = form.id ? 'PATCH' : 'POST'
+      const res = await fetch('/api/agent/products', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const j = await res.json()
+      if (!res.ok) { alert(j.error); return }
+      setItems(list => form.id ? list.map(p => p.id === form.id ? j.product : p) : [...list, j.product])
+      setForm(empty)
+    } catch {
+      alert('Falha de rede. Tente novamente.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function remove(id: string) {
     if (!confirm('Remover produto?')) return
-    await fetch(`/api/agent/products?id=${id}`, { method: 'DELETE' })
-    setItems(list => list.filter(p => p.id !== id))
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/agent/products?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) { const j = await res.json(); alert(j.error); return }
+      setItems(list => list.filter(p => p.id !== id))
+    } catch {
+      alert('Falha de rede. Tente novamente.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
