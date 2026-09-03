@@ -6,6 +6,9 @@ import { processMessage, computeLeadScore, generateLeadSummary, generateHandoffG
 import { sendSplitText, sendText, notifyQualifiedLead } from '@/lib/uazapi/client'
 import { getRedis } from '@/lib/redis/client'
 import { loadAgentConfig } from '@/lib/agent/settings'
+import { isAllowedChat, phoneFromJid } from '@/lib/inbox/whitelist'
+import { resolveDebounceMs, latestMsgTtlSeconds } from '@/lib/agent/debounce'
+import { resolveMediaText } from '@/lib/openai/media'
 import type { AiConversation, QualificationData } from '@/types/database'
 
 const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
@@ -49,6 +52,8 @@ async function getRecentHistory(
 }
 
 export async function POST(req: NextRequest) {
+  // Marca a chegada para medir o ciclo real até a primeira resposta ao lead.
+  const receivedAt = Date.now()
   try {
     const body = await req.json()
 
@@ -65,32 +70,27 @@ export async function POST(req: NextRequest) {
     // uazapi v2 aninha a mensagem em body.message; aceita também payload achatado
     const msg = body.message ?? body.data ?? body
 
-    // wa_chatid é o identificador do chat no formato NUMERO@s.whatsapp.net
-    const rawChatId = body.wa_chatid ?? msg.wa_chatid ?? msg.chatid ?? msg.sender ?? msg.from ?? body.from ?? ''
-    const phone     = String(rawChatId).replace('@s.whatsapp.net', '').replace('@c.us', '')
-    const waChatId  = phone ? `${phone}@s.whatsapp.net` : ''
-    const message   = msg.text ?? msg.body ?? msg.content?.text ?? body.text ?? ''
+    // Identificador do chat. Preferimos chatid (é sempre o telefone do outro lado,
+    // tanto inbound quanto outbound) e nunca sender, que a Uazapi entrega como LID
+    // (NUMERO@lid) — LID é identidade do WhatsApp e não se converte em telefone.
+    // sender_pn é o telefone do remetente e só existe no formato novo de payload.
+    const rawChatId = body.wa_chatid ?? msg.wa_chatid ?? msg.chatid ?? msg.sender_pn ?? msg.from ?? body.from ?? ''
+    // phoneFromJid devolve o telefone REAL (a forma que este assinante usa no
+    // WhatsApp) e null para tudo que não é telefone: @lid, @g.us, malformado.
+    // A identidade no banco, no Redis e no envio continua sendo essa forma real;
+    // só a comparação da whitelist é normalizada (ver isAllowedChat).
+    const phone     = phoneFromJid(rawChatId)
+    let message     = msg.text ?? msg.body ?? msg.content?.text ?? body.text ?? ''
     const isFromMe  = Boolean(msg.fromMe ?? body.fromMe)
 
     if (!phone) {
-      console.log('[WEBHOOK] ignorado — phone vazio')
+      // Loga o identificador exato recebido: é com ele que diagnosticamos.
+      console.log('[WEBHOOK] ignorado — identificador nao e telefone:', JSON.stringify(String(rawChatId)))
       return NextResponse.json({ ok: true })
     }
 
-    // Whitelist de números permitidos, no formato NUMERO@s.whatsapp.net
-    const ALLOWED_CHATIDS = [
-      '5511994800080@s.whatsapp.net',
-      '554187490574@s.whatsapp.net',
-      '5511989869931@s.whatsapp.net',
-      '5511993414181@s.whatsapp.net',
-      '5511964868132@s.whatsapp.net',
-      '5541996621204@s.whatsapp.net',
-      '5511996008567@s.whatsapp.net',
-      '5543999301514@s.whatsapp.net',
-      '5543988376610@s.whatsapp.net',
-    ]
-    if (!ALLOWED_CHATIDS.includes(waChatId)) {
-      console.log('[WEBHOOK] ignorado — wa_chatid nao permitido:', waChatId)
+    if (!isAllowedChat(rawChatId)) {
+      console.log('[WEBHOOK] ignorado — numero nao permitido:', JSON.stringify(String(rawChatId)))
       return NextResponse.json({ ok: true })
     }
 
@@ -161,13 +161,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    // ── Marcador de chegada ANTES de qualquer conversão de mídia ──
+    // A conversão de áudio é lenta (download + whisper). Se o marcador só fosse
+    // gravado depois dela, essa invocação ficaria invisível ao agrupamento: uma
+    // mensagem de texto do lead responderia no meio e o áudio responderia de
+    // novo depois, duplicando a resposta. Com o marcador aqui, a mensagem mais
+    // nova invalida a invocação lenta na comparação lá embaixo.
+    const arrivalTs = new Date().toISOString()
+    const redis = getRedis()
+    const debounceMs = resolveDebounceMs(process.env.AGENT_DEBOUNCE_MS)
+    // ponytail: TTL soma o teto da etapa de mídia (downloadMedia + download do
+    // arquivo + whisper, 20s cada). Se a mídia ficar mais lenta que isso, o
+    // marcador expira e a resposta é descartada — aumentar o somatório.
+    await redis.set(`latest_msg:${phone}`, arrivalTs, 'EX', latestMsgTtlSeconds(debounceMs) + 60)
+
+    // Sem texto: áudio e imagem viram texto antes de seguir o fluxo normal.
+    // Vídeo, documento, figurinha e falhas de conversão encerram sem responder.
+    if (!message) {
+      const derived = await resolveMediaText(msg)
+      if (derived) message = derived
+    }
+
     if (!message) {
       console.log('[WEBHOOK] ignorado — message vazio. phone:', phone)
       return NextResponse.json({ ok: true })
     }
 
     // ── Registra a mensagem do lead imediatamente (fonte única: interactions) ──
-    const arrivalTs = new Date().toISOString()
     await supabase.from('interactions').insert({
       lead_id: conversation.lead_id,
       channel: 'whatsapp',
@@ -177,18 +197,16 @@ export async function POST(req: NextRequest) {
 
     // ── Se um humano assumiu a conversa manualmente, a IA não responde ──
     // enquanto o lock estiver ativo (15 minutos, renovado a cada mensagem humana).
-    const redis = getRedis()
     const isHumanLocked = await redis.exists(`human_lock:${phone}`)
     if (isHumanLocked) {
       console.log('[WEBHOOK] conversa travada por atendimento humano manual — IA nao responde:', phone)
       return NextResponse.json({ ok: true })
     }
 
-    // ── Agrupamento: espera 30s. Se chegar mensagem mais nova (marcador no
-    //    Redis muda), esta invocação sai e deixa a invocação da última
-    //    mensagem responder a tudo de uma vez. ──
-    await redis.set(`latest_msg:${phone}`, arrivalTs, 'EX', 60)
-    await new Promise((r) => setTimeout(r, 30000))
+    // ── Agrupamento: espera a janela de AGENT_DEBOUNCE_MS. Se chegar mensagem
+    //    mais nova (marcador no Redis muda), esta invocação sai e deixa a
+    //    invocação da última mensagem responder a tudo de uma vez. ──
+    await new Promise((r) => setTimeout(r, debounceMs))
 
     const latestMarker = await redis.get(`latest_msg:${phone}`)
     if (latestMarker !== arrivalTs) {
@@ -249,6 +267,11 @@ export async function POST(req: NextRequest) {
       if (updatedQualification[key] !== undefined) leadUpdate[key] = updatedQualification[key]
     }
 
+    // Envia resposta em blocos separados. O resumo (ida extra à OpenAI, não usada
+    // na resposta ao lead) fica para depois do envio, fora do ciclo medido.
+    console.log(`[WEBHOOK] ciclo ate a primeira resposta: ${Date.now() - receivedAt}ms (debounce ${debounceMs}ms) — phone: ${phone}`)
+    await sendSplitText(phone, reply)
+
     // A cada 2 mensagens do lead, recalcula o resumo de uma linha.
     // Conta o total de mensagens inbound do lead (não a janela de getRecentHistory,
     // que satura e travaria a paridade sempre no mesmo valor).
@@ -269,9 +292,6 @@ export async function POST(req: NextRequest) {
     }
 
     await supabase.from('leads').update(leadUpdate).eq('id', conversation.lead_id)
-
-    // Envia resposta em blocos separados
-    await sendSplitText(phone, reply)
 
     // Se handoff: mensagem fixa de encerramento + notifica a Camila
     if (shouldHandoff) {
