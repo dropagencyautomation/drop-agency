@@ -153,3 +153,14 @@ export async function notifyQualifiedLead(leadPhone: string, summary: string, gu
     `--------------------------------------------------`
   await sendText(adminPhone, text)
 }
+
+/**
+ * Revoga a mensagem no WhatsApp ("apagar para todos"). Aceita tanto o messageid
+ * curto (3EB0...) quanto o id completo OWNER:MSGID — ambos verificados na instância.
+ * Erro sobe com status e corpo cru da Uazapi (ver helper request).
+ */
+export async function deleteMessage(id: string) {
+  // Com teto: sem ele, instância pendurada deixa o botão da lixeira em '…' para
+  // sempre no CRM. Estourando, o erro sobe e a rota devolve 502.
+  return request('/message/delete', { id }, 15000)
+}

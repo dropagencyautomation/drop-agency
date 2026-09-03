@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { WaChat, WaMessage } from '@/types/database'
 import MessageBubble from './MessageBubble'
 import { Avatar } from './ChatList'
+import { validateAttachment, MAX_ATTACHMENT_BYTES, DROP_ACCEPT } from '@/lib/inbox/attachments'
 
 const EMOJIS = ('😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😗 😚 😙 😋 😛 😜 🤪 😝 🤗 🤔 🤨 😐 😑 ' +
   '😶 🙄 😏 😣 😥 😮 🤐 😯 😪 😴 😌 😔 🤤 😷 🤒 🥳 🥺 😢 😭 😤 😠 😡 🤯 😳 🥵 🥶 😱 😨 😰 😥 ' +
@@ -34,23 +35,28 @@ interface Props {
   agentPaused: boolean
   onToggleAgent: () => void
   onSend: (text: string, file: File | null) => Promise<void>
+  onDelete: (waMessageId: string) => Promise<void>
   onLoadMore: () => void
   userId: string
 }
 
-export default function Conversation({ chat, messages, hasMore, agentPaused, onToggleAgent, onSend, onLoadMore, userId }: Props) {
+export default function Conversation({ chat, messages, hasMore, agentPaused, onToggleAgent, onSend, onDelete, onLoadMore, userId }: Props) {
   const [text, setText] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [sending, setSending] = useState(false)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [recording, setRecording] = useState(false)
   const [secs, setSecs] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const atBottomRef = useRef(true)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
+  const dragDepthRef = useRef(0)
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const cancelRef = useRef(false)
   const startingMicRef = useRef(false)
@@ -86,6 +92,66 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
     const t = setInterval(() => setSecs(s => s + 1), 1000)
     return () => clearInterval(t)
   }, [recording])
+
+  useEffect(() => () => { if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current) }, [])
+
+  const notify = useCallback((text: string, error: boolean) => {
+    setNotice({ text, error })
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 7000)
+  }, [])
+
+  // Anexa o primeiro arquivo válido: o composer manda um por vez, então avisamos o que ficou de fora.
+  const attachFiles = useCallback((list: File[]) => {
+    if (chat.is_group || list.length === 0) return
+    const rules = { maxBytes: MAX_ATTACHMENT_BYTES, accept: DROP_ACCEPT }
+    const checked = list.map(f => ({ f, r: validateAttachment(f, rules) }))
+    const first = checked.find(c => c.r.ok)
+    if (!first) {
+      const r = checked[0].r
+      notify(r.ok ? 'Nenhum arquivo válido.' : r.error, true)
+      return
+    }
+    setFile(first.f)
+    if (fileRef.current) fileRef.current.value = ''
+    const rest = checked.length - 1
+    if (rest > 0) notify(`Anexei ${first.f.name}. Vai um arquivo por vez — os outros ${rest} não foram anexados.`, false)
+    else setNotice(null)
+  }, [chat.is_group, notify])
+
+  // Colar imagem/vídeo anexa; colar texto segue normal. Grupo fica inerte.
+  useEffect(() => {
+    if (chat.is_group) return
+    const onPaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files ?? [])
+      if (files.length === 0) return
+      e.preventDefault()
+      attachFiles(files)
+    }
+    const reset = () => { dragDepthRef.current = 0; setDragging(false) }
+    window.addEventListener('paste', onPaste)
+    window.addEventListener('dragend', reset)
+    return () => { window.removeEventListener('paste', onPaste); window.removeEventListener('dragend', reset) }
+  }, [chat.is_group, attachFiles])
+
+  // Guard global: drop de arquivo fora da zona de anexo (composer, cabeçalho,
+  // lista de chats) faria o navegador abrir o arquivo e desmontar o CRM,
+  // perdendo o texto digitado. Vale também em grupo, onde o drop é inerte.
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => Boolean(e.dataTransfer?.types.includes('Files'))
+    const onDragOver = (e: DragEvent) => { if (hasFiles(e)) e.preventDefault() }
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      dragDepthRef.current = 0
+      setDragging(false)
+    }
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', onDrop)
+    return () => { window.removeEventListener('dragover', onDragOver); window.removeEventListener('drop', onDrop) }
+  }, [])
+
+  const dragHasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files')
 
   const submit = useCallback(async (t: string, f: File | null) => {
     if (sending || (!t.trim() && !f)) return
@@ -195,7 +261,45 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
         )}
       </div>
 
-      {/* Mensagens */}
+      {/* Mensagens (área de soltar arquivo) */}
+      <div
+        style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}
+        onDragEnter={e => {
+          if (chat.is_group || !dragHasFiles(e)) return
+          e.preventDefault()
+          dragDepthRef.current += 1
+          setDragging(true)
+        }}
+        onDragOver={e => {
+          if (chat.is_group || !dragHasFiles(e)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+        }}
+        onDragLeave={() => {
+          // contador de profundidade: dragleave também dispara ao passar por elementos filhos
+          if (dragDepthRef.current === 0) return
+          dragDepthRef.current -= 1
+          if (dragDepthRef.current === 0) setDragging(false)
+        }}
+        onDrop={e => {
+          if (chat.is_group) return
+          e.preventDefault()
+          dragDepthRef.current = 0
+          setDragging(false)
+          attachFiles(Array.from(e.dataTransfer.files))
+        }}
+      >
+      {dragging && (
+        <div style={{
+          position: 'absolute', inset: 12, zIndex: 5, pointerEvents: 'none',
+          border: '2px dashed #E53E3E', borderRadius: 12, background: '#070707d9',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
+        }}>
+          <div style={{ fontSize: 34 }}>📎</div>
+          <div style={{ color: '#F9FAFB', fontSize: 16 }}>Solte para anexar</div>
+          <div style={{ color: '#9CA3AF', fontSize: 12 }}>Imagem ou vídeo, até {Math.round(MAX_ATTACHMENT_BYTES / (1024 * 1024))} MB · um por vez</div>
+        </div>
+      )}
       <div
         ref={scrollRef}
         onScroll={e => {
@@ -227,9 +331,10 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
                 }}>{dayLabel(m.timestamp)}</span>
               </div>
             )}
-            <MessageBubble m={m} meId={userId} />
+            <MessageBubble m={m} meId={userId} onDelete={onDelete} />
           </div>
         ))}
+      </div>
       </div>
 
       {/* Composer */}
@@ -259,6 +364,17 @@ export default function Conversation({ chat, messages, hasMore, agentPaused, onT
                 ))}
               </div>
             </>
+          )}
+
+          {notice && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px',
+              borderBottom: '1px solid #1a1a1a', fontSize: 13,
+              color: notice.error ? '#f15c6d' : '#9CA3AF',
+            }}>
+              <span style={{ flex: 1, minWidth: 0 }}>{notice.text}</span>
+              <button onClick={() => setNotice(null)} style={{ ...iconBtn, width: 26, height: 26, fontSize: 15 }}>✕</button>
+            </div>
           )}
 
           {file && (

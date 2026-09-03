@@ -138,6 +138,23 @@ export default function Inbox({ initialChats, userId }: { initialChats: WaChat[]
     setAgentPaused(true) // o envio pelo CRM pausa a Carol (rota /send)
   }, [activeId])
 
+  const remove = useCallback(async (waMessageId: string) => {
+    let res: Response
+    try {
+      res = await fetch('/api/whatsapp/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ waMessageId }),
+      })
+    } catch (err) {
+      alert('Falha de rede. Tente novamente.')
+      throw err
+    }
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) { alert(j.error ?? 'Falha ao apagar'); throw new Error(j.error ?? 'falha') }
+    const m = j.message as WaMessage | null
+    if (m) setMessages(ms => ms.map(x => (x.id === m.id ? { ...x, ...m } : x)))
+  }, [])
+
   const sync = useCallback(async () => {
     setSyncing(true); setSyncInfo(null)
     try {
@@ -172,7 +189,7 @@ export default function Inbox({ initialChats, userId }: { initialChats: WaChat[]
             key={active.id}
             chat={active} messages={messages} hasMore={hasMore}
             agentPaused={agentPaused} onToggleAgent={toggleAgent}
-            onSend={send} onLoadMore={loadMore} userId={userId}
+            onSend={send} onDelete={remove} onLoadMore={loadMore} userId={userId}
           />
         ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, color: '#9CA3AF' }}>

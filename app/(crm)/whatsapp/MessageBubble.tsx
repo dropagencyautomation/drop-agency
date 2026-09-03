@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import type { WaMessage } from '@/types/database'
 
 const NAME_COLORS = ['#53bdeb', '#dfb0ea', '#e542a3', '#E53E3E', '#ffb02e', '#7ec9ff', '#c4b5fd', '#f6a58a']
@@ -33,11 +34,26 @@ function Ticks({ status }: { status: WaMessage['status'] }) {
   return <span style={{ color, fontSize: 12, letterSpacing: -3 }}>{status === 'sent' ? '✓' : '✓✓'}</span>
 }
 
-export default function MessageBubble({ m, meId }: { m: WaMessage; meId?: string }) {
+export default function MessageBubble({ m, meId, onDelete }: {
+  m: WaMessage
+  meId?: string
+  onDelete?: (waMessageId: string) => Promise<void>
+}) {
   const mine = m.from_me
   const caption = m.text ?? ''
+  const deleted = Boolean(m.deleted_at)
+  const [hover, setHover] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  if (m.type === 'sticker' && m.media_url) {
+  async function handleDelete() {
+    if (busy || !onDelete) return
+    if (!confirm('Apagar para todos? A mensagem some também do WhatsApp do cliente.')) return
+    setBusy(true)
+    try { await onDelete(m.wa_message_id) } catch { /* o Inbox já avisou o erro */ }
+    finally { setBusy(false) }
+  }
+
+  if (m.type === 'sticker' && m.media_url && !deleted) {
     return (
       <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', margin: '4px 0' }}>
         <div>
@@ -50,7 +66,19 @@ export default function MessageBubble({ m, meId }: { m: WaMessage; meId?: string
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', margin: '3px 0' }}>
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', alignItems: 'flex-end', margin: '3px 0' }}
+    >
+      {mine && !deleted && onDelete && (
+        <button onClick={handleDelete} disabled={busy} title="Apagar para todos"
+          style={{
+            background: 'transparent', border: 'none', color: '#9CA3AF', fontSize: 13,
+            cursor: busy ? 'default' : 'pointer', padding: '0 6px 4px', flexShrink: 0,
+            opacity: hover || busy ? 1 : 0, transition: 'opacity .12s',
+          }}>{busy ? '…' : '🗑'}</button>
+      )}
       <div style={{
         maxWidth: '65%', background: mine ? '#3b1212' : '#111111', color: '#F9FAFB',
         borderRadius: 8, padding: '6px 8px 8px', boxShadow: '0 1px .5px #070707',
@@ -60,6 +88,10 @@ export default function MessageBubble({ m, meId }: { m: WaMessage; meId?: string
           <div style={{ fontSize: 12.5, fontWeight: 500, color: colorFor(m.sender_name), marginBottom: 2 }}>{m.sender_name}</div>
         )}
 
+        {deleted ? (
+          <div style={{ fontStyle: 'italic', color: '#9CA3AF', fontSize: 13.5 }}>Mensagem apagada</div>
+        ) : (
+        <>
         {m.type === 'image' && m.media_url && (
           <a href={m.media_url} target="_blank" rel="noreferrer">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -95,6 +127,8 @@ export default function MessageBubble({ m, meId }: { m: WaMessage; meId?: string
           <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: m.type === 'text' ? 0 : 5 }}>
             <Linkify text={caption} />
           </div>
+        )}
+        </>
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginTop: 2, height: 15 }}>

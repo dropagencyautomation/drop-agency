@@ -203,5 +203,7 @@ export interface WaMessage {
   sender_name: string | null
   timestamp: string
   raw: unknown
+  deleted_at: string | null
+  deleted_by: string | null
   created_at: string
 }
