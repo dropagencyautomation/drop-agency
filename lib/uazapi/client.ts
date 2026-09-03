@@ -122,9 +122,9 @@ export async function findMessages(chatid: string, offset = 0, limit = 200) {
   return { messages: Array.isArray(r?.messages) ? r.messages : [], hasMore: Boolean(r?.hasMore), nextOffset: Number(r?.nextOffset ?? offset + limit) }
 }
 
-export async function downloadMedia(fullId: string): Promise<{ fileURL: string; mimetype: string } | null> {
+export async function downloadMedia(fullId: string, timeoutMs = 20000): Promise<{ fileURL: string; mimetype: string } | null> {
   try {
-    const r = await request('/message/download', { id: fullId }, 20000)
+    const r = await request('/message/download', { id: fullId }, timeoutMs)
     return r?.fileURL ? { fileURL: r.fileURL, mimetype: r.mimetype ?? '' } : null
   } catch (e) { console.error('[UAZAPI] download falhou', fullId, e); return null }
 }

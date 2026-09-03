@@ -28,14 +28,14 @@ describe('resolveMediaText', () => {
   it('imagem vira descricao com prefixo', async () => {
     const d = fakes()
     expect(await resolveMediaText(rawImage, d)).toBe(`${IMAGE_TEXT_PREFIX} Print de um anuncio com o texto "50% off".`)
-    expect(d.describe).toHaveBeenCalledWith('https://uaz/a.jpg')
+    expect(d.describe).toHaveBeenCalledWith('https://uaz/a.jpg', expect.any(Number))
     expect(d.transcribe).not.toHaveBeenCalled()
   })
 
   it('sem fileURL usa downloadMedia', async () => {
     const d = fakes()
     await resolveMediaText({ ...rawAudio, fileURL: '' }, d)
-    expect(d.downloadMedia).toHaveBeenCalledWith('5511:AB1')
+    expect(d.downloadMedia).toHaveBeenCalledWith('5511:AB1', expect.any(Number))
     expect(d.transcribe).toHaveBeenCalledOnce()
   })
 

@@ -7,7 +7,7 @@ import { sendSplitText, sendText, notifyQualifiedLead } from '@/lib/uazapi/clien
 import { getRedis } from '@/lib/redis/client'
 import { loadAgentConfig } from '@/lib/agent/settings'
 import { isAllowedChat, phoneFromJid } from '@/lib/inbox/whitelist'
-import { resolveDebounceMs, latestMsgTtlSeconds } from '@/lib/agent/debounce'
+import { resolveDebounceMs, latestMsgTtlSeconds, MEDIA_DEBOUNCE_MS } from '@/lib/agent/debounce'
 import { resolveMediaText } from '@/lib/openai/media'
 import type { AiConversation, QualificationData } from '@/types/database'
 
@@ -177,9 +177,13 @@ export async function POST(req: NextRequest) {
 
     // Sem texto: áudio e imagem viram texto antes de seguir o fluxo normal.
     // Vídeo, documento, figurinha e falhas de conversão encerram sem responder.
+    let fromMedia = false
     if (!message) {
       const derived = await resolveMediaText(msg)
-      if (derived) message = derived
+      if (derived) {
+        message = derived
+        fromMedia = true
+      }
     }
 
     if (!message) {
@@ -206,7 +210,10 @@ export async function POST(req: NextRequest) {
     // ── Agrupamento: espera a janela de AGENT_DEBOUNCE_MS. Se chegar mensagem
     //    mais nova (marcador no Redis muda), esta invocação sai e deixa a
     //    invocação da última mensagem responder a tudo de uma vez. ──
-    await new Promise((r) => setTimeout(r, debounceMs))
+    // Quem manda áudio ou imagem não está digitando em rajada, e a conversão já
+    // consumiu parte do orçamento de 10s: a janela encolhe para não estourar o ciclo.
+    const effectiveDebounceMs = fromMedia ? Math.min(debounceMs, MEDIA_DEBOUNCE_MS) : debounceMs
+    await new Promise((r) => setTimeout(r, effectiveDebounceMs))
 
     const latestMarker = await redis.get(`latest_msg:${phone}`)
     if (latestMarker !== arrivalTs) {
@@ -269,7 +276,7 @@ export async function POST(req: NextRequest) {
 
     // Envia resposta em blocos separados. O resumo (ida extra à OpenAI, não usada
     // na resposta ao lead) fica para depois do envio, fora do ciclo medido.
-    console.log(`[WEBHOOK] ciclo ate a primeira resposta: ${Date.now() - receivedAt}ms (debounce ${debounceMs}ms) — phone: ${phone}`)
+    console.log(`[WEBHOOK] ciclo ate a primeira resposta: ${Date.now() - receivedAt}ms (debounce ${effectiveDebounceMs}ms) — phone: ${phone}`)
     await sendSplitText(phone, reply)
 
     // A cada 2 mensagens do lead, recalcula o resumo de uma linha.

@@ -5,6 +5,10 @@ const DEFAULT_DEBOUNCE_MS = 6000
 const MIN_DEBOUNCE_MS = 500
 const MAX_DEBOUNCE_MS = 30000
 
+// Janela usada quando a mensagem do lead veio de áudio/imagem: a transcrição já
+// gastou segundos do orçamento e mídia não chega em rajada como texto digitado.
+export const MEDIA_DEBOUNCE_MS = 1500
+
 export function resolveDebounceMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === '') return DEFAULT_DEBOUNCE_MS
 

@@ -9,22 +9,28 @@ export const IMAGE_TEXT_PREFIX = '[imagem recebida]'
 
 const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4.1'
 
-// Tetos desta etapa. Estourando, o webhook volta ao comportamento antigo
-// (ignora a mídia) em vez de travar o atendimento.
-// Visão: imagem é uma chamada rápida, 6s basta.
-const VISION_TIMEOUT_MS = 6000
-// Áudio: 6s derrubava áudio de WhatsApp de 45-90s (upload + whisper), deixando
-// o lead sem resposta nenhuma. 20s é a mesma ordem já aceita no downloadMedia.
-// Vale para o download do arquivo e para o whisper, cada um por si.
-const AUDIO_TIMEOUT_MS = 20000
+// Orçamento TOTAL desta etapa, não teto por chamada. A cliente exige resposta em
+// até 10s e a conversão roda antes da janela de agrupamento, então o pior caso
+// aqui é o que decide se o ciclo estoura: com um teto por chamada, download +
+// fetch + whisper somavam 60s. O deadline é compartilhado — cada chamada recebe
+// o que sobrou — e estourando o webhook volta ao comportamento antigo (ignora a
+// mídia) em vez de travar o atendimento.
+// ponytail: 8s cobre áudio de WhatsApp curto (o comum em qualificação); áudio
+// longo perde a transcrição. Subir junto com AGENT_DEBOUNCE_MS se o alvo mudar.
+const MEDIA_BUDGET_MS = 8000
+
+/** Milissegundos restantes do orçamento, com piso de 1s para não abortar na hora. */
+function remaining(deadline: number): number {
+  return Math.max(1000, deadline - Date.now())
+}
 
 const VISION_PROMPT =
   'Descreva esta imagem de forma factual em português, em 1 a 3 frases. Se houver texto legível na imagem, transcreva o texto. Não interprete intenções nem invente informação.'
 
 export interface MediaDeps {
-  downloadMedia: (fullId: string) => Promise<{ fileURL: string; mimetype: string } | null>
-  transcribe: (file: File) => Promise<string>
-  describe: (imageUrl: string) => Promise<string>
+  downloadMedia: (fullId: string, timeoutMs?: number) => Promise<{ fileURL: string; mimetype: string } | null>
+  transcribe: (file: File, deadline: number) => Promise<string>
+  describe: (imageUrl: string, deadline: number) => Promise<string>
   fetch: typeof globalThis.fetch
 }
 
@@ -34,14 +40,14 @@ function getOpenAI() {
 
 const defaultDeps: MediaDeps = {
   downloadMedia,
-  transcribe: async (file) => {
+  transcribe: async (file, deadline) => {
     const r = await getOpenAI().audio.transcriptions.create(
       { file, model: 'whisper-1', language: 'pt' },
-      { signal: AbortSignal.timeout(AUDIO_TIMEOUT_MS) }
+      { signal: AbortSignal.timeout(remaining(deadline)) }
     )
     return r.text
   },
-  describe: async (imageUrl) => {
+  describe: async (imageUrl, deadline) => {
     const c = await getOpenAI().chat.completions.create(
       {
         model: MODEL,
@@ -55,17 +61,17 @@ const defaultDeps: MediaDeps = {
           },
         ],
       },
-      { signal: AbortSignal.timeout(VISION_TIMEOUT_MS) }
+      { signal: AbortSignal.timeout(remaining(deadline)) }
     )
     return c.choices[0]?.message?.content ?? ''
   },
   fetch: (...args) => globalThis.fetch(...args),
 }
 
-async function mediaUrl(m: WaMessageInput, deps: MediaDeps): Promise<string | null> {
+async function mediaUrl(m: WaMessageInput, deps: MediaDeps, deadline: number): Promise<string | null> {
   if (m.media_url) return m.media_url
   if (!m.wa_full_id) return null
-  return (await deps.downloadMedia(m.wa_full_id))?.fileURL ?? null
+  return (await deps.downloadMedia(m.wa_full_id, remaining(deadline)))?.fileURL ?? null
 }
 
 /**
@@ -96,8 +102,9 @@ export async function resolveMediaText(
   }
 
   const startedAt = Date.now()
+  const deadline = startedAt + MEDIA_BUDGET_MS
   try {
-    const url = await mediaUrl(m, d)
+    const url = await mediaUrl(m, d, deadline)
     if (!url) {
       console.log(`[WEBHOOK] ${m.type} sem URL de midia - ignorado`)
       return null
@@ -107,13 +114,13 @@ export async function resolveMediaText(
     if (m.type === 'audio') {
       // Sem sinal, um host de mídia que trava sem fechar a conexão deixa o
       // webhook pendurado para sempre e a Uazapi reentrega o evento.
-      const res = await d.fetch(url, { signal: AbortSignal.timeout(AUDIO_TIMEOUT_MS) })
+      const res = await d.fetch(url, { signal: AbortSignal.timeout(remaining(deadline)) })
       if (!res.ok) throw new Error(`download do audio retornou ${res.status}`)
       const blob = await res.blob()
       const file = new File([blob], 'audio.ogg', { type: m.media_mime || blob.type || 'audio/ogg' })
-      text = (await d.transcribe(file)).trim()
+      text = (await d.transcribe(file, deadline)).trim()
     } else {
-      text = (await d.describe(url)).trim()
+      text = (await d.describe(url, deadline)).trim()
     }
 
     console.log(`[WEBHOOK] midia ${m.type} convertida em texto em ${Date.now() - startedAt}ms`)
