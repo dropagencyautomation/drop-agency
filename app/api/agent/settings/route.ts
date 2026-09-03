@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin(); if (!auth.ok) return auth.res
   const { action } = await req.json()
   if (action !== 'reset') return NextResponse.json({ error: 'Ação inválida' }, { status: 400 })
-  const reset = { persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 }, updated_by: auth.userId, updated_at: new Date().toISOString() }
+  const reset = { persona_name: 'Carol', extra_info: '', business_hours: { start: 0, end: 24 }, updated_by: auth.userId, updated_at: new Date().toISOString() }
   const { error } = await adminClient().from('agent_settings').update(reset).eq('id', 1)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   await audit(auth.userId, auth.name, 'RESET_AGENT_SETTINGS', 'agent_settings', '1', null)

@@ -13,10 +13,10 @@ describe('resolveSettings', () => {
   })
   it('business_hours inválido volta ao default', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect(resolveSettings({ business_hours: { start: 'x' } as any }).business_hours).toEqual({ start: 8, end: 19 })
+    expect(resolveSettings({ business_hours: { start: 'x' } as any }).business_hours).toEqual({ start: 0, end: 24 })
   })
   it('business_hours fora do intervalo volta ao default', () => {
-    expect(resolveSettings({ business_hours: { start: -5, end: 25 } }).business_hours).toEqual({ start: 8, end: 19 })
+    expect(resolveSettings({ business_hours: { start: -5, end: 25 } }).business_hours).toEqual({ start: 0, end: 24 })
   })
 })
 

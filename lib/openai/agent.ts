@@ -270,11 +270,13 @@ Não invente informação que não apareceu na conversa. Se faltar algo, simples
 const SEP = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
 function hoursBlock(s: AgentSettings): string {
-  if (
-    s.business_hours.start === DEFAULT_SETTINGS.business_hours.start &&
-    s.business_hours.end === DEFAULT_SETTINGS.business_hours.end
-  ) {
-    return ''
+  // 0h às 24h significa atendimento ininterrupto: dizemos isso com todas as letras,
+  // senão a IA improvisa "respondo amanhã cedo" fora do horário comercial.
+  if (s.business_hours.start === 0 && s.business_hours.end === 24) {
+    return `${SEP}
+HORÁRIO DE ATENDIMENTO
+${SEP}
+O atendimento funciona 24 horas por dia, todos os dias da semana, incluindo fins de semana e feriados. Nunca diga ao lead que ele precisa esperar o horário comercial, que o time só responde amanhã ou que está fora do expediente: você responde na hora, a qualquer hora. Se perguntarem sobre horário de atendimento, informe que é 24 horas por dia, todos os dias.`
   }
   return `${SEP}
 HORÁRIO DE ATENDIMENTO
@@ -314,7 +316,10 @@ export function buildSystemPrompt(settings: AgentSettings, products: AgentProduc
 }
 
 function getOpenAI() {
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  // Sem teto, o padrão do openai-node é 10min x 2 retries por chamada: OpenAI
+  // degradada deixaria o webhook pendurado em vez de falhar. Cobre resposta,
+  // extração e resumo de uma vez.
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000, maxRetries: 1 })
 }
 
 const QUALIFICATION_LABELS: Record<keyof QualificationData, string> = {

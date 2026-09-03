@@ -14,6 +14,8 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
 
+  const alwaysOn = s.business_hours.start === 0 && s.business_hours.end === 24
+
   const set = <K extends keyof AgentSettings>(k: K, v: AgentSettings[K]) => setS(p => ({ ...p, [k]: v }))
 
   async function save() {
@@ -37,7 +39,7 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
       const res = await fetch('/api/agent/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) })
       const j = await res.json()
       if (!res.ok) { setMsg(j.error ?? 'Erro'); return }
-      setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 8, end: 19 } }))
+      setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 0, end: 24 } }))
       setMsg('Padrão restaurado.')
     } catch {
       setMsg('Falha de rede. Tente novamente.')
@@ -53,9 +55,17 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
         <label style={label}>Nome do agente</label>
         <input style={{ ...input, marginBottom: 14 }} value={s.persona_name} onChange={e => set('persona_name', e.target.value)} />
         <div style={{ display: 'flex', gap: 12, alignItems: 'end', marginBottom: 14 }}>
-          <div><label style={label}>Abre (h)</label><input type="number" min={0} max={23} style={{ ...input, width: 90 }} value={s.business_hours.start} onChange={e => set('business_hours', { ...s.business_hours, start: Number(e.target.value) })} /></div>
-          <div><label style={label}>Fecha (h)</label><input type="number" min={1} max={24} style={{ ...input, width: 90 }} value={s.business_hours.end} onChange={e => set('business_hours', { ...s.business_hours, end: Number(e.target.value) })} /></div>
-          <span style={{ fontSize: 12, color: 'var(--muted-foreground)', marginLeft: 16, paddingBottom: 10 }}>Padrão 8h–19h. O agente só menciona horário quando alterado.</span>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, paddingBottom: 10 }}>
+            <input type="checkbox" checked={alwaysOn} onChange={e => set('business_hours', e.target.checked ? { start: 0, end: 24 } : { start: 8, end: 19 })} />
+            Atende 24 horas, todos os dias
+          </label>
+          {!alwaysOn && <>
+            <div><label style={label}>Abre (h)</label><input type="number" min={0} max={23} style={{ ...input, width: 90 }} value={s.business_hours.start} onChange={e => set('business_hours', { ...s.business_hours, start: Number(e.target.value) })} /></div>
+            <div><label style={label}>Fecha (h)</label><input type="number" min={1} max={24} style={{ ...input, width: 90 }} value={s.business_hours.end} onChange={e => set('business_hours', { ...s.business_hours, end: Number(e.target.value) })} /></div>
+          </>}
+          <span style={{ fontSize: 12, color: 'var(--muted-foreground)', marginLeft: 16, paddingBottom: 10 }}>
+            {alwaysOn ? 'O agente responde a qualquer hora e nunca manda o lead esperar o horário comercial.' : 'Fora desse horário o agente continua respondendo, mas informa a faixa quando perguntado.'}
+          </span>
         </div>
         <label style={label}>Informações adicionais da empresa (endereço, formas de contato, avisos)</label>
         <textarea style={{ ...input, minHeight: 120 }} value={s.extra_info} onChange={e => set('extra_info', e.target.value)} />

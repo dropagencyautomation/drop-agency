@@ -13,7 +13,9 @@ describe('buildSystemPrompt', () => {
     expect(p).toContain('Seu nome é Carol')
     expect(p).not.toContain('CATÁLOGO')
     expect(p).not.toContain('INFORMAÇÕES ADICIONAIS')
-    expect(p).not.toContain('HORÁRIO DE ATENDIMENTO')
+    // O padrão da Drop é 24/7, então o bloco de horário SEMPRE entra dizendo isso.
+    expect(p).toContain('HORÁRIO DE ATENDIMENTO')
+    expect(p).toContain('24 horas por dia, todos os dias')
   })
   it('injeta nome, horário e informações adicionais', () => {
     const p = buildSystemPrompt({ ...DEFAULT_SETTINGS, persona_name: 'Bia', extra_info: 'Estacionamento próprio.', business_hours: { start: 9, end: 18 } }, [])
@@ -40,6 +42,6 @@ describe('buildSystemPrompt', () => {
     expect(p).not.toContain('- Site institucional (')
   })
   it('guarda de identidade do prompt; se mudar de propósito, atualize', () => {
-    expect(buildSystemPrompt(DEFAULT_SETTINGS, []).length).toBe(16657)
+    expect(buildSystemPrompt(DEFAULT_SETTINGS, []).length).toBe(17102)
   })
 })
