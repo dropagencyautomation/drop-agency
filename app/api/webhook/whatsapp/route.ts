@@ -7,7 +7,7 @@ import { sendSplitText, sendText, notifyQualifiedLead } from '@/lib/uazapi/clien
 import { getRedis } from '@/lib/redis/client'
 import { loadAgentConfig } from '@/lib/agent/settings'
 import { isAllowedChat, phoneFromJid } from '@/lib/inbox/whitelist'
-import { resolveDebounceMs, latestMsgTtlSeconds, MEDIA_DEBOUNCE_MS } from '@/lib/agent/debounce'
+import { latestMsgTtlSeconds, MEDIA_DEBOUNCE_MS } from '@/lib/agent/debounce'
 import { resolveMediaText } from '@/lib/openai/media'
 import { touchHumanLock, isAgentPaused } from '@/lib/inbox/agentLock'
 import { botSendingKey, latestMsgKey } from '@/lib/agent/keys'
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
       if (!isBotEcho) {
         // Humano de verdade assumiu a conversa pelo celular: silencia a IA.
         // Nunca encurta a pausa manual feita pelo CRM (ver touchHumanLock).
-        await touchHumanLock(phone)
+        await touchHumanLock(phone, agentConfig.settings.human_lock_minutes * 60)
 
         if (message) {
           // Grava em interactions (fonte de verdade do chat no CRM e da
@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
     // nova invalida a invocação lenta na comparação lá embaixo.
     const arrivalTs = new Date().toISOString()
     const redis = getRedis()
-    const debounceMs = resolveDebounceMs(process.env.AGENT_DEBOUNCE_MS)
+    const debounceMs = agentConfig.settings.debounce_ms
     // ponytail: TTL soma o teto da etapa de mídia (downloadMedia + download do
     // arquivo + whisper, 20s cada). Se a mídia ficar mais lenta que isso, o
     // marcador expira e a resposta é descartada — aumentar o somatório.

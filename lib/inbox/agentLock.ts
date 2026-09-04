@@ -6,25 +6,8 @@ import { humanLockKey } from '@/lib/agent/keys'
 // não viver para sempre se ninguém religar.
 const MANUAL_PAUSE_SECONDS = 30 * 24 * 3600
 
-const DEFAULT_AUTO_LOCK_MINUTES = 60
-const MIN_AUTO_LOCK_MINUTES = 1
-const MAX_AUTO_LOCK_MINUTES = 24 * 60
-
-/**
- * Janela de silêncio da IA quando alguém responde o lead pelo celular, sem usar
- * o CRM. Curta demais e a IA volta a falar no meio do atendimento humano.
- */
-export function resolveAutoLockSeconds(raw: string | undefined): number {
-  if (raw === undefined || raw.trim() === '') return DEFAULT_AUTO_LOCK_MINUTES * 60
-  const value = Number(raw)
-  if (!Number.isInteger(value) || value < MIN_AUTO_LOCK_MINUTES || value > MAX_AUTO_LOCK_MINUTES) {
-    console.log(
-      `[WEBHOOK] AGENT_HUMAN_LOCK_MINUTES invalido: "${raw}" — usando ${DEFAULT_AUTO_LOCK_MINUTES} min`
-    )
-    return DEFAULT_AUTO_LOCK_MINUTES * 60
-  }
-  return value * 60
-}
+// Janela usada quando o chamador não informa a configurada na tela Agente IA.
+const FALLBACK_AUTO_LOCK_SECONDS = 60 * 60
 
 export async function pauseAgent(phone: string) {
   try {
@@ -57,12 +40,11 @@ export async function isAgentPaused(phone: string) {
  * manual de 30 dias por uma janela de 15 minutos, e a IA voltava a responder
  * sozinha alguns minutos depois de a atendente clicar em "Atendimento humano".
  */
-export async function touchHumanLock(phone: string) {
+export async function touchHumanLock(phone: string, autoSeconds = FALLBACK_AUTO_LOCK_SECONDS) {
   try {
     const redis = getRedis()
     const k = humanLockKey(phone)
     const ttl = await redis.ttl(k) // -2: não existe | -1: existe sem expiração
-    const autoSeconds = resolveAutoLockSeconds(process.env.AGENT_HUMAN_LOCK_MINUTES)
     if (ttl === -1 || ttl >= autoSeconds) return // pausa mais longa já vale: preserva
     await redis.set(k, '1', 'EX', autoSeconds)
   } catch (e) {

@@ -154,6 +154,10 @@ export interface AgentSettings {
   persona_name: string
   extra_info: string
   business_hours: { start: number; end: number }
+  /** Silêncio da IA quando um humano responde pelo celular, em minutos. */
+  human_lock_minutes: number
+  /** Espera para agrupar mensagens em rajada antes de responder, em ms. */
+  debounce_ms: number
   updated_by: string | null
   updated_at: string
 }

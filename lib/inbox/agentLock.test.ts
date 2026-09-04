@@ -10,26 +10,10 @@ vi.mock('@/lib/redis/client', () => ({
   }),
 }))
 
-const { touchHumanLock, resolveAutoLockSeconds } = await import('./agentLock')
+const { touchHumanLock } = await import('./agentLock')
 
 beforeEach(() => {
   store.set.mockClear()
-  delete process.env.AGENT_HUMAN_LOCK_MINUTES
-})
-
-describe('resolveAutoLockSeconds', () => {
-  it('padrão de 60 minutos', () => {
-    expect(resolveAutoLockSeconds(undefined)).toBe(3600)
-    expect(resolveAutoLockSeconds('')).toBe(3600)
-  })
-  it('valor válido em minutos', () => {
-    expect(resolveAutoLockSeconds('30')).toBe(1800)
-  })
-  it('valor inválido ou fora da faixa volta ao padrão', () => {
-    expect(resolveAutoLockSeconds('abc')).toBe(3600)
-    expect(resolveAutoLockSeconds('0')).toBe(3600)
-    expect(resolveAutoLockSeconds('99999')).toBe(3600)
-  })
 })
 
 describe('touchHumanLock', () => {
@@ -50,6 +34,12 @@ describe('touchHumanLock', () => {
     store.ttl = 120
     await touchHumanLock('554196621204')
     expect(store.set).toHaveBeenCalled()
+  })
+
+  it('usa a janela configurada na tela Agente IA', async () => {
+    store.ttl = -2
+    await touchHumanLock('554196621204', 120 * 60)
+    expect(store.set).toHaveBeenCalledWith('human_lock:554196621204', '1', 'EX', 7200)
   })
 
   it('normaliza a chave: as duas formas do nono dígito colidem', async () => {

@@ -22,7 +22,7 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
     setSaving(true); setMsg('')
     try {
       const res = await fetch('/api/agent/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ persona_name: s.persona_name, extra_info: s.extra_info, business_hours: s.business_hours }) })
+        body: JSON.stringify({ persona_name: s.persona_name, extra_info: s.extra_info, business_hours: s.business_hours, human_lock_minutes: s.human_lock_minutes, debounce_ms: s.debounce_ms }) })
       const j = await res.json()
       setMsg(res.ok ? 'Salvo. Vale a partir da próxima mensagem recebida.' : j.error ?? 'Erro')
     } catch {
@@ -39,7 +39,7 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
       const res = await fetch('/api/agent/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) })
       const j = await res.json()
       if (!res.ok) { setMsg(j.error ?? 'Erro'); return }
-      setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 0, end: 24 } }))
+      setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 0, end: 24 }, human_lock_minutes: 60, debounce_ms: 6000 }))
       setMsg('Padrão restaurado.')
     } catch {
       setMsg('Falha de rede. Tente novamente.')
@@ -67,6 +67,34 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
             {alwaysOn ? 'O agente responde a qualquer hora e nunca manda o lead esperar o horário comercial.' : 'Fora desse horário o agente continua respondendo, mas informa a faixa quando perguntado.'}
           </span>
         </div>
+        <div style={{ borderTop: '1px solid var(--border)', margin: '18px 0 16px' }} />
+        <h4 style={{ margin: '0 0 4px', fontSize: 13, color: '#F9FAFB' }}>Tempos do atendimento</h4>
+        <p style={{ margin: '0 0 14px', fontSize: 12, color: 'var(--muted-foreground)' }}>
+          Vale a partir da próxima mensagem recebida, sem precisar de deploy.
+        </p>
+        <div style={{ display: 'flex', gap: 20, alignItems: 'start', marginBottom: 16, flexWrap: 'wrap' }}>
+          <div style={{ maxWidth: 300 }}>
+            <label style={label}>Pausa da IA ao responder pelo celular (min)</label>
+            <input type="number" min={1} max={1440} style={{ ...input, width: 110 }}
+              value={s.human_lock_minutes}
+              onChange={e => set('human_lock_minutes', Number(e.target.value))} />
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
+              Quando alguém responde o lead pelo WhatsApp no celular, a IA fica em silêncio por esse tempo.
+              O botão &quot;Atendimento humano&quot; aqui no CRM é diferente: pausa até você devolver a conversa para a IA, sem prazo.
+            </p>
+          </div>
+          <div style={{ maxWidth: 300 }}>
+            <label style={label}>Espera antes de responder (segundos)</label>
+            <input type="number" min={0.5} max={30} step={0.5} style={{ ...input, width: 110 }}
+              value={s.debounce_ms / 1000}
+              onChange={e => set('debounce_ms', Math.round(Number(e.target.value) * 1000))} />
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
+              Tempo que a IA aguarda para juntar mensagens seguidas do lead numa resposta só.
+              Menor = resposta mais rápida, porém mais risco de responder antes de o lead terminar de escrever.
+            </p>
+          </div>
+        </div>
+
         <label style={label}>Informações adicionais da empresa (endereço, formas de contato, avisos)</label>
         <textarea style={{ ...input, minHeight: 120 }} value={s.extra_info} onChange={e => set('extra_info', e.target.value)} />
       </div>
