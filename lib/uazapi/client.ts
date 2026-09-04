@@ -1,4 +1,5 @@
 import { getRedis } from '@/lib/redis/client'
+import { botSendingKey } from '@/lib/agent/keys'
 
 const BASE_URL = process.env.UAZAPI_BASE_URL!
 const TOKEN = process.env.UAZAPI_TOKEN!
@@ -29,7 +30,7 @@ export async function sendText(phone: string, text: string) {
   // TTL curto, renovado a cada chamada — cobre qualquer envio (blocos
   // múltiplos, mensagens fixas, notificações), sem precisar prever a
   // duração total antecipadamente.
-  await getRedis().set(`bot:sending:${phone}`, '1', 'EX', 15)
+  await getRedis().set(botSendingKey(phone), '1', 'EX', 15)
 
   return request('/send/text', {
     number: phone,
@@ -133,7 +134,7 @@ export async function sendMedia(number: string, type: 'image' | 'video' | 'audio
   // Mesmo marcador do sendText: sem ele o webhook da Carol lê o eco do próprio
   // envio como mensagem humana e sobrescreve o human_lock de 30 dias por 15 min.
   // ponytail: Redis fora do ar não pode travar o envio — logamos e seguimos.
-  try { await getRedis().set(`bot:sending:${number}`, '1', 'EX', 15) } catch (e) { console.error('[UAZAPI] bot:sending falhou', number, e) }
+  try { await getRedis().set(botSendingKey(number), '1', 'EX', 15) } catch (e) { console.error('[UAZAPI] bot:sending falhou', number, e) }
 
   return request('/send/media', { number, type, file, text: caption ?? '', docName, ...opts })
 }

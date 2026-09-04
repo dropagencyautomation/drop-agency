@@ -9,6 +9,8 @@ import { loadAgentConfig } from '@/lib/agent/settings'
 import { isAllowedChat, phoneFromJid } from '@/lib/inbox/whitelist'
 import { resolveDebounceMs, latestMsgTtlSeconds, MEDIA_DEBOUNCE_MS } from '@/lib/agent/debounce'
 import { resolveMediaText } from '@/lib/openai/media'
+import { touchHumanLock, isAgentPaused } from '@/lib/inbox/agentLock'
+import { botSendingKey, latestMsgKey } from '@/lib/agent/keys'
 import type { AiConversation, QualificationData } from '@/types/database'
 
 const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
@@ -138,12 +140,12 @@ export async function POST(req: NextRequest) {
     // ── fromMe: pode ser eco do próprio bot ou um humano respondendo manual ──
     if (isFromMe) {
       const redis = getRedis()
-      const isBotEcho = await redis.exists(`bot:sending:${phone}`)
+      const isBotEcho = await redis.exists(botSendingKey(phone))
 
       if (!isBotEcho) {
-        // Humano de verdade assumiu a conversa: trava a IA por 15 minutos,
-        // renovado a cada nova mensagem humana (não por mensagens do lead).
-        await redis.set(`human_lock:${phone}`, '1', 'EX', 900)
+        // Humano de verdade assumiu a conversa pelo celular: silencia a IA.
+        // Nunca encurta a pausa manual feita pelo CRM (ver touchHumanLock).
+        await touchHumanLock(phone)
 
         if (message) {
           // Grava em interactions (fonte de verdade do chat no CRM e da
@@ -173,7 +175,7 @@ export async function POST(req: NextRequest) {
     // ponytail: TTL soma o teto da etapa de mídia (downloadMedia + download do
     // arquivo + whisper, 20s cada). Se a mídia ficar mais lenta que isso, o
     // marcador expira e a resposta é descartada — aumentar o somatório.
-    await redis.set(`latest_msg:${phone}`, arrivalTs, 'EX', latestMsgTtlSeconds(debounceMs) + 60)
+    await redis.set(latestMsgKey(phone), arrivalTs, 'EX', latestMsgTtlSeconds(debounceMs) + 60)
 
     // Sem texto: áudio e imagem viram texto antes de seguir o fluxo normal.
     // Vídeo, documento, figurinha e falhas de conversão encerram sem responder.
@@ -201,7 +203,7 @@ export async function POST(req: NextRequest) {
 
     // ── Se um humano assumiu a conversa manualmente, a IA não responde ──
     // enquanto o lock estiver ativo (15 minutos, renovado a cada mensagem humana).
-    const isHumanLocked = await redis.exists(`human_lock:${phone}`)
+    const isHumanLocked = await isAgentPaused(phone)
     if (isHumanLocked) {
       console.log('[WEBHOOK] conversa travada por atendimento humano manual — IA nao responde:', phone)
       return NextResponse.json({ ok: true })
@@ -215,7 +217,7 @@ export async function POST(req: NextRequest) {
     const effectiveDebounceMs = fromMedia ? Math.min(debounceMs, MEDIA_DEBOUNCE_MS) : debounceMs
     await new Promise((r) => setTimeout(r, effectiveDebounceMs))
 
-    const latestMarker = await redis.get(`latest_msg:${phone}`)
+    const latestMarker = await redis.get(latestMsgKey(phone))
     if (latestMarker !== arrivalTs) {
       console.log('[WEBHOOK] mensagem mais recente chegou — esta invocação aguarda a próxima responder')
       return NextResponse.json({ ok: true })
