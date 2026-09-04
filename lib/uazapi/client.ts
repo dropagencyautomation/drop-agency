@@ -98,11 +98,26 @@ export function splitIntoBlocks(text: string): string[] {
  * no WhatsApp: envia um bloco, aguarda um tempo aleatório entre 2 e 3 segundos
  * e então envia o próximo, até terminar todos os blocos.
  */
-export async function sendSplitText(phone: string, text: string) {
+/**
+ * @param shouldStop consultado antes de CADA bloco. Se devolver true, o envio
+ * para ali e a função retorna quantos blocos saíram. Existe para o botão
+ * "Atendimento humano" surtir efeito no meio de uma resposta longa: uma resposta
+ * de 8 blocos leva ~40s para sair, e sem isso a IA "continuava falando" depois
+ * de pausada. Sem o parâmetro, o comportamento é o de sempre.
+ */
+export async function sendSplitText(
+  phone: string,
+  text: string,
+  shouldStop?: () => Promise<boolean>
+): Promise<{ sent: number; total: number }> {
   const blocks = splitIntoBlocks(text)
-  if (blocks.length === 0) return
+  if (blocks.length === 0) return { sent: 0, total: 0 }
 
   for (let i = 0; i < blocks.length; i++) {
+    if (shouldStop && (await shouldStop())) {
+      console.log(`[UAZAPI] envio interrompido antes do bloco ${i + 1}/${blocks.length} — ${phone}`)
+      return { sent: i, total: blocks.length }
+    }
     await sendText(phone, blocks[i])
 
     // Entre um bloco e o próximo, espera aleatória de 2 a 3 segundos.
@@ -110,6 +125,7 @@ export async function sendSplitText(phone: string, text: string) {
       await sleep(getRandomBlockDelay())
     }
   }
+  return { sent: blocks.length, total: blocks.length }
 }
 
 export async function findChats(offset = 0, limit = 100) {

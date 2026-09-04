@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 import { createServiceClient } from '@/lib/supabase/server'
 import { processMessage, computeLeadScore, generateLeadSummary, generateHandoffGuidance } from '@/lib/openai/agent'
-import { sendSplitText, sendText, notifyQualifiedLead } from '@/lib/uazapi/client'
+import { sendSplitText, sendText, notifyQualifiedLead, splitIntoBlocks } from '@/lib/uazapi/client'
 import { getRedis } from '@/lib/redis/client'
 import { loadAgentConfig } from '@/lib/agent/settings'
 import { isAllowedChat, phoneFromJid } from '@/lib/inbox/whitelist'
@@ -223,6 +223,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    // A pausa pode ter sido acionada durante a janela (botão no CRM ou resposta
+    // pelo celular). Checar de novo aqui evita gastar OpenAI e responder à toa.
+    if (await isAgentPaused(phone)) {
+      console.log('[WEBHOOK] pausa acionada durante a janela — IA nao responde:', phone)
+      return NextResponse.json({ ok: true })
+    }
+
     const freshHistory = await getRecentHistory(supabase, conversation.lead_id)
 
     // ── Junta todas as mensagens do lead ainda não respondidas ──
@@ -244,14 +251,15 @@ export async function POST(req: NextRequest) {
       agentConfig
     )
 
-    // Registra resposta da IA
-    await supabase.from('interactions').insert({
+    // Registra resposta da IA (guardamos o id: se o envio for interrompido pelo
+    // atendimento humano, o histórico precisa refletir só o que o lead recebeu)
+    const { data: aiRow } = await supabase.from('interactions').insert({
       lead_id: conversation.lead_id,
       channel: 'whatsapp',
       direction: 'outbound',
       content: reply,
       ai_generated: true,
-    })
+    }).select('id').single()
 
     await supabase.from('ai_conversations').update({
       qualification_data: updatedQualification,
@@ -279,7 +287,24 @@ export async function POST(req: NextRequest) {
     // Envia resposta em blocos separados. O resumo (ida extra à OpenAI, não usada
     // na resposta ao lead) fica para depois do envio, fora do ciclo medido.
     console.log(`[WEBHOOK] ciclo ate a primeira resposta: ${Date.now() - receivedAt}ms (debounce ${effectiveDebounceMs}ms) — phone: ${phone}`)
-    await sendSplitText(phone, reply)
+    // Antes de cada bloco, confere se um humano assumiu (botão no CRM ou resposta
+    // pelo celular). Se sim, a IA para de falar no bloco seguinte, em vez de
+    // despejar os ~40s de resposta que já estavam na fila.
+    const { sent, total } = await sendSplitText(phone, reply, () => isAgentPaused(phone))
+    const interrupted = sent < total
+    if (interrupted && aiRow?.id) {
+      if (sent === 0) {
+        // Nada chegou ao lead: a resposta não existiu para ele, então some do histórico.
+        await supabase.from('interactions').delete().eq('id', aiRow.id)
+      } else {
+        // Chegou parte: o histórico (e a memória da IA) fica só com o que foi entregue.
+        const delivered = splitIntoBlocks(reply).slice(0, sent).join('\n')
+        await supabase.from('interactions').update({
+          content: `${delivered}\n[resposta interrompida: atendimento humano assumiu]`,
+        }).eq('id', aiRow.id)
+      }
+      console.log(`[WEBHOOK] resposta interrompida por atendimento humano (${sent}/${total} blocos) — ${phone}`)
+    }
 
     // A cada 2 mensagens do lead, recalcula o resumo de uma linha.
     // Conta o total de mensagens inbound do lead (não a janela de getRecentHistory,
@@ -302,8 +327,9 @@ export async function POST(req: NextRequest) {
 
     await supabase.from('leads').update(leadUpdate).eq('id', conversation.lead_id)
 
-    // Se handoff: mensagem fixa de encerramento + notifica a Camila
-    if (shouldHandoff) {
+    // Se handoff: mensagem fixa de encerramento + notifica a Camila.
+    // Se um humano já assumiu no meio da resposta, nada disso faz sentido.
+    if (shouldHandoff && !interrupted) {
       await sendText(phone, 'Obrigado pelo contato, em breve vamos falar com você')
 
       await supabase.from('leads').update({ stage_id: 2 }).eq('id', conversation.lead_id)
