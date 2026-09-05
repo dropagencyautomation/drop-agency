@@ -7,7 +7,7 @@ import { humanLockKey } from '@/lib/agent/keys'
 const MANUAL_PAUSE_SECONDS = 30 * 24 * 3600
 
 // Janela usada quando o chamador não informa a configurada na tela Agente IA.
-const FALLBACK_AUTO_LOCK_SECONDS = 60 * 60
+const FALLBACK_AUTO_LOCK_SECONDS = 72 * 60 * 60
 
 export async function pauseAgent(phone: string) {
   try {

@@ -22,7 +22,7 @@ export function resolveSettings(row: Partial<AgentSettings> | null): AgentSettin
     persona_name: name || DEFAULT_SETTINGS.persona_name,
     extra_info: typeof row.extra_info === 'string' ? row.extra_info.trim() : '',
     business_hours: validBh ? bh : DEFAULT_SETTINGS.business_hours,
-    human_lock_minutes: inRange(row.human_lock_minutes, 1, 24 * 60)
+    human_lock_minutes: inRange(row.human_lock_minutes, 1, 30 * 24 * 60)
       ? (row.human_lock_minutes as number)
       : DEFAULT_SETTINGS.human_lock_minutes,
     debounce_ms: inRange(row.debounce_ms, 500, 30000)

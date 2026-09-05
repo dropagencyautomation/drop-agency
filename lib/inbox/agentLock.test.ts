@@ -20,7 +20,7 @@ describe('touchHumanLock', () => {
   it('cria o lock quando não existe', async () => {
     store.ttl = -2
     await touchHumanLock('554196621204')
-    expect(store.set).toHaveBeenCalledWith('human_lock:554196621204', '1', 'EX', 3600)
+    expect(store.set).toHaveBeenCalledWith('human_lock:554196621204', '1', 'EX', 259200)
   })
 
   it('NÃO encurta a pausa manual do CRM', async () => {
@@ -45,6 +45,6 @@ describe('touchHumanLock', () => {
   it('normaliza a chave: as duas formas do nono dígito colidem', async () => {
     store.ttl = -2
     await touchHumanLock('5541996621204')
-    expect(store.set).toHaveBeenCalledWith('human_lock:554196621204', '1', 'EX', 3600)
+    expect(store.set).toHaveBeenCalledWith('human_lock:554196621204', '1', 'EX', 259200)
   })
 })

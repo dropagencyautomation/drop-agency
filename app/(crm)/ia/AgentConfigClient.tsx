@@ -39,7 +39,7 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
       const res = await fetch('/api/agent/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) })
       const j = await res.json()
       if (!res.ok) { setMsg(j.error ?? 'Erro'); return }
-      setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 0, end: 24 }, human_lock_minutes: 60, debounce_ms: 6000 }))
+      setS(p => ({ ...p, persona_name: 'Carol', extra_info: '', business_hours: { start: 0, end: 24 }, human_lock_minutes: 4320, debounce_ms: 6000 }))
       setMsg('Padrão restaurado.')
     } catch {
       setMsg('Falha de rede. Tente novamente.')
@@ -74,12 +74,14 @@ export default function AgentConfigClient({ initialSettings, initialProducts }: 
         </p>
         <div style={{ display: 'flex', gap: 20, alignItems: 'start', marginBottom: 16, flexWrap: 'wrap' }}>
           <div style={{ maxWidth: 300 }}>
-            <label style={label}>Pausa da IA ao responder pelo celular (min)</label>
-            <input type="number" min={1} max={1440} style={{ ...input, width: 110 }}
-              value={s.human_lock_minutes}
-              onChange={e => set('human_lock_minutes', Number(e.target.value))} />
+            <label style={label}>Pausa da IA ao responder pelo celular (horas)</label>
+            {/* Guardado em minutos; a tela fala em horas porque a janela é de dias, não de minutos.
+                Valor legado < 30 min mostra 1 (sem mexer, salva o valor original); campo vazio vira 1h, não 0. */}
+            <input type="number" min={1} max={720} style={{ ...input, width: 110 }}
+              value={Math.max(1, Math.round(s.human_lock_minutes / 60))}
+              onChange={e => set('human_lock_minutes', Math.max(60, Math.round(Number(e.target.value) * 60)))} />
             <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
-              Quando alguém responde o lead pelo WhatsApp no celular, a IA fica em silêncio por esse tempo.
+              Quando alguém responde o lead pelo WhatsApp no celular, a IA fica em silêncio por esse tempo (padrão: 72 horas).
               O botão &quot;Atendimento humano&quot; aqui no CRM é diferente: pausa até você devolver a conversa para a IA, sem prazo.
             </p>
           </div>

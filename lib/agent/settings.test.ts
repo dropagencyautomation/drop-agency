@@ -48,3 +48,16 @@ describe('loadAgentConfig', () => {
     expect(r.products).toEqual([])
   })
 })
+
+describe('human_lock_minutes', () => {
+  it('padrão é 72h', () => {
+    expect(DEFAULT_SETTINGS.human_lock_minutes).toBe(4320)
+  })
+  it('aceita até 30 dias', () => {
+    expect(resolveSettings({ human_lock_minutes: 4320 }).human_lock_minutes).toBe(4320)
+    expect(resolveSettings({ human_lock_minutes: 43200 }).human_lock_minutes).toBe(43200)
+  })
+  it('acima de 30 dias volta ao padrão', () => {
+    expect(resolveSettings({ human_lock_minutes: 43201 }).human_lock_minutes).toBe(4320)
+  })
+})

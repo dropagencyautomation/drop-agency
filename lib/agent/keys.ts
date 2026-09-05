@@ -15,3 +15,6 @@ export const botSendingKey = (phone: string) => key('bot:sending', phone)
 
 /** Marcador de agrupamento: só a invocação da mensagem mais nova responde. */
 export const latestMsgKey = (phone: string) => key('latest_msg', phone)
+
+/** Trava de resposta: só uma invocação por vez decide e envia para este telefone. */
+export const processingKey = (phone: string) => key('processing', phone)

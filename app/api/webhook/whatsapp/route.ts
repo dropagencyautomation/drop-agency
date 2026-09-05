@@ -10,7 +10,8 @@ import { isAllowedChat, phoneFromJid } from '@/lib/inbox/whitelist'
 import { latestMsgTtlSeconds, MEDIA_DEBOUNCE_MS } from '@/lib/agent/debounce'
 import { resolveMediaText } from '@/lib/openai/media'
 import { touchHumanLock, isAgentPaused } from '@/lib/inbox/agentLock'
-import { botSendingKey, latestMsgKey } from '@/lib/agent/keys'
+import { botSendingKey, latestMsgKey, processingKey } from '@/lib/agent/keys'
+import { leadSaidName } from '@/lib/agent/nameGuard'
 import type { AiConversation, QualificationData } from '@/types/database'
 
 const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
@@ -29,6 +30,13 @@ const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
 ]
 
 type HistoryRow = { role: 'user' | 'assistant'; content: string; timestamp: string }
+
+// Trava de resposta: TTL cobre UMA rodada (OpenAI + envio em blocos ≈ 60-110s) e
+// é renovado a cada rodada. Renovação e liberação são compare-and-set em Lua para
+// nunca mexer na trava de outra invocação (GET+DEL separados não são atômicos).
+const LOCK_TTL_SECONDS = 180
+const RENEW_IF_OWNER = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('expire',KEYS[1],ARGV[2]) end return 0"
+const RELEASE_IF_OWNER = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) end return 0"
 
 async function getRecentHistory(
   supabase: Awaited<ReturnType<typeof createServiceClient>>,
@@ -139,8 +147,14 @@ export async function POST(req: NextRequest) {
 
     // ── fromMe: pode ser eco do próprio bot ou um humano respondendo manual ──
     if (isFromMe) {
-      const redis = getRedis()
-      const isBotEcho = await redis.exists(botSendingKey(phone))
+      // Redis fora: não temos como saber se é eco do bot. Assumir humano é o
+      // lado seguro (só grava a mensagem e tenta pausar); nunca devolver 500.
+      let isBotEcho = 0
+      try {
+        isBotEcho = await getRedis().exists(botSendingKey(phone))
+      } catch (e) {
+        console.error('[WEBHOOK] redis indisponivel ao checar eco do bot — tratando como humano:', e)
+      }
 
       if (!isBotEcho) {
         // Humano de verdade assumiu a conversa pelo celular: silencia a IA.
@@ -175,7 +189,12 @@ export async function POST(req: NextRequest) {
     // ponytail: TTL soma o teto da etapa de mídia (downloadMedia + download do
     // arquivo + whisper, 20s cada). Se a mídia ficar mais lenta que isso, o
     // marcador expira e a resposta é descartada — aumentar o somatório.
-    await redis.set(latestMsgKey(phone), arrivalTs, 'EX', latestMsgTtlSeconds(debounceMs) + 60)
+    try {
+      await redis.set(latestMsgKey(phone), arrivalTs, 'EX', latestMsgTtlSeconds(debounceMs) + 60)
+    } catch (e) {
+      // Redis fora: responde sem agrupamento em vez de calar (500).
+      console.error('[WEBHOOK] marcador de agrupamento indisponivel — seguindo sem agrupamento:', e)
+    }
 
     // Sem texto: áudio e imagem viram texto antes de seguir o fluxo normal.
     // Vídeo, documento, figurinha e falhas de conversão encerram sem responder.
@@ -217,7 +236,12 @@ export async function POST(req: NextRequest) {
     const effectiveDebounceMs = fromMedia ? Math.min(debounceMs, MEDIA_DEBOUNCE_MS) : debounceMs
     await new Promise((r) => setTimeout(r, effectiveDebounceMs))
 
-    const latestMarker = await redis.get(latestMsgKey(phone))
+    let latestMarker: string | null = arrivalTs
+    try {
+      latestMarker = await redis.get(latestMsgKey(phone))
+    } catch (e) {
+      console.error('[WEBHOOK] marcador de agrupamento indisponivel — respondendo sem agrupamento:', e)
+    }
     if (latestMarker !== arrivalTs) {
       console.log('[WEBHOOK] mensagem mais recente chegou — esta invocação aguarda a próxima responder')
       return NextResponse.json({ ok: true })
@@ -230,114 +254,224 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    const freshHistory = await getRecentHistory(supabase, conversation.lead_id)
-
-    // ── Junta todas as mensagens do lead ainda não respondidas ──
-    let lastAssistantIdx = -1
-    for (let i = freshHistory.length - 1; i >= 0; i--) {
-      if (freshHistory[i].role === 'assistant') { lastAssistantIdx = i; break }
-    }
-    const priorHistory = freshHistory.slice(0, lastAssistantIdx + 1)
-    const combinedMessage = freshHistory
-      .slice(lastAssistantIdx + 1)
-      .filter((m) => m.role === 'user')
-      .map((m) => m.content)
-      .join('\n')
-
-    // Processa com IA (histórico anterior + bloco de mensagens novas combinadas)
-    const { reply, updatedQualification, shouldHandoff } = await processMessage(
-      { ...conversation, conversation_history: priorHistory } as AiConversation,
-      combinedMessage,
-      agentConfig
-    )
-
-    // Registra resposta da IA (guardamos o id: se o envio for interrompido pelo
-    // atendimento humano, o histórico precisa refletir só o que o lead recebeu)
-    const { data: aiRow } = await supabase.from('interactions').insert({
-      lead_id: conversation.lead_id,
-      channel: 'whatsapp',
-      direction: 'outbound',
-      content: reply,
-      ai_generated: true,
-    }).select('id').single()
-
-    await supabase.from('ai_conversations').update({
-      qualification_data: updatedQualification,
-      updated_at: new Date().toISOString(),
-    }).eq('id', conversation.id)
-
-    // Histórico completo (janela + resposta desta rodada), usado pelo resumo/orientações
-    const finalHistory: HistoryRow[] = [
-      ...freshHistory,
-      { role: 'assistant', content: reply, timestamp: new Date().toISOString() },
-    ]
-
-    // Persiste os dados qualificados direto no lead, conforme a conversa avança
-    const { score, profile } = computeLeadScore(updatedQualification)
-    const leadUpdate: Record<string, unknown> = {
-      last_interaction_at: new Date().toISOString(),
-      score,
-      profile,
-    }
-    if (updatedQualification.name) leadUpdate.name = updatedQualification.name
-    for (const key of LEAD_FIELD_KEYS) {
-      if (updatedQualification[key] !== undefined) leadUpdate[key] = updatedQualification[key]
-    }
-
-    // Envia resposta em blocos separados. O resumo (ida extra à OpenAI, não usada
-    // na resposta ao lead) fica para depois do envio, fora do ciclo medido.
-    console.log(`[WEBHOOK] ciclo ate a primeira resposta: ${Date.now() - receivedAt}ms (debounce ${effectiveDebounceMs}ms) — phone: ${phone}`)
-    // Antes de cada bloco, confere se um humano assumiu (botão no CRM ou resposta
-    // pelo celular). Se sim, a IA para de falar no bloco seguinte, em vez de
-    // despejar os ~40s de resposta que já estavam na fila.
-    const { sent, total } = await sendSplitText(phone, reply, () => isAgentPaused(phone))
-    const interrupted = sent < total
-    if (interrupted && aiRow?.id) {
-      if (sent === 0) {
-        // Nada chegou ao lead: a resposta não existiu para ele, então some do histórico.
-        await supabase.from('interactions').delete().eq('id', aiRow.id)
-      } else {
-        // Chegou parte: o histórico (e a memória da IA) fica só com o que foi entregue.
-        const delivered = splitIntoBlocks(reply).slice(0, sent).join('\n')
-        await supabase.from('interactions').update({
-          content: `${delivered}\n[resposta interrompida: atendimento humano assumiu]`,
-        }).eq('id', aiRow.id)
+    // ── Trava de resposta por telefone ──
+    // Duas invocações do mesmo lead chegaram a responder ao mesmo tempo e os
+    // blocos se intercalaram no WhatsApp do lead (uma resposta longa leva ~1 min
+    // para sair; latest_msg só protege a janela de agrupamento, não o envio).
+    // Quem não pega a trava sai: a mensagem já está em interactions e a
+    // invocação dona da trava a encontra na drenagem lá embaixo.
+    const lockKey = processingKey(phone)
+    try {
+      const acquired = await redis.set(lockKey, arrivalTs, 'EX', LOCK_TTL_SECONDS, 'NX')
+      if (!acquired) {
+        console.log('[WEBHOOK] outra invocacao esta respondendo %s — esta mensagem sera drenada por ela', phone)
+        return NextResponse.json({ ok: true })
       }
-      console.log(`[WEBHOOK] resposta interrompida por atendimento humano (${sent}/${total} blocos) — ${phone}`)
+    } catch (e) {
+      // Redis fora: segue sem trava, como sempre foi. A trava nunca cala a IA.
+      console.error('[WEBHOOK] trava de resposta indisponivel — seguindo sem ela:', e)
     }
 
-    // A cada 2 mensagens do lead, recalcula o resumo de uma linha.
-    // Conta o total de mensagens inbound do lead (não a janela de getRecentHistory,
-    // que satura e travaria a paridade sempre no mesmo valor).
-    const { count: userMessageCount } = await supabase
-      .from('interactions')
-      .select('*', { count: 'exact', head: true })
-      .eq('lead_id', conversation.lead_id)
-      .eq('channel', 'whatsapp')
-      .eq('direction', 'inbound')
+    try {
+      // Sem teto de rodadas: quem bateu na trava já saiu, então tudo que chegar
+      // enquanto respondemos só será respondido por esta invocação.
+      // answeredUpTo = created_at da última mensagem do lead já respondida.
+      let answeredUpTo: string | undefined
+      let failures = 0
+      for (let round = 1; ; round++) {
+        if (round > 1) {
+          // Renova a trava só se ainda for nossa: o TTL cobre UMA rodada, não todas.
+          try {
+            await redis.eval(RENEW_IF_OWNER, 1, lockKey, arrivalTs, LOCK_TTL_SECONDS)
+          } catch (e) {
+            console.error('[WEBHOOK] falha ao renovar trava de resposta:', e)
+          }
+        }
 
-    let latestSummary: string | undefined
-    if (userMessageCount !== null && userMessageCount % 2 === 0) {
-      const generated = await generateLeadSummary(finalHistory, updatedQualification, personaName)
-      if (generated) {
-        latestSummary = generated
-        leadUpdate.summary = generated
+        try {
+          const freshHistory = await getRecentHistory(supabase, conversation.lead_id)
+
+          // ── Junta todas as mensagens do lead ainda não respondidas ──
+          // Rodada 1: tudo depois da última resposta. Rodadas seguintes: tudo mais
+          // novo que answeredUpTo (mesmo critério da drenagem lá embaixo) — a
+          // resposta que acabamos de gravar é mais nova que mensagens que chegaram
+          // durante o processMessage, e o corte pelo último assistant as perderia.
+          let pendingMsgs: HistoryRow[]
+          let priorHistory: HistoryRow[]
+          if (answeredUpTo) {
+            const cut = answeredUpTo
+            const isPending = (m: HistoryRow) => m.role === 'user' && m.timestamp > cut
+            pendingMsgs = freshHistory.filter(isPending)
+            priorHistory = freshHistory.filter((m) => !isPending(m))
+          } else {
+            let lastAssistantIdx = -1
+            for (let i = freshHistory.length - 1; i >= 0; i--) {
+              if (freshHistory[i].role === 'assistant') { lastAssistantIdx = i; break }
+            }
+            priorHistory = freshHistory.slice(0, lastAssistantIdx + 1)
+            pendingMsgs = freshHistory.slice(lastAssistantIdx + 1).filter((m) => m.role === 'user')
+          }
+          const combinedMessage = pendingMsgs.map((m) => m.content).join('\n')
+          if (!combinedMessage) {
+            console.log('[WEBHOOK] nenhuma mensagem do lead pendente nesta rodada — phone:', phone)
+            break
+          }
+          if (round > 1) console.log(`[WEBHOOK] drenagem: rodada ${round} respondendo ${pendingMsgs.length} mensagens acumuladas`)
+          // Marca até onde esta rodada leu: mensagem inbound mais nova que isso
+          // chegou enquanto respondíamos e precisa de outra rodada.
+          const lastUserTs = pendingMsgs[pendingMsgs.length - 1].timestamp
+
+          // Processa com IA (histórico anterior + bloco de mensagens novas combinadas)
+          const { reply, updatedQualification, shouldHandoff } = await processMessage(
+            { ...conversation, conversation_history: priorHistory } as AiConversation,
+            combinedMessage,
+            agentConfig
+          )
+
+          // Nome só vale se o lead o escreveu: o extrator já pegou o nome de uma
+          // mensagem manual da atendente (que chega ao modelo como assistant).
+          const prevName = (conversation.qualification_data as QualificationData | null)?.name
+          if (updatedQualification.name && updatedQualification.name !== prevName) {
+            const leadTexts = [...freshHistory.filter((m) => m.role === 'user').map((m) => m.content), combinedMessage]
+            if (!leadSaidName(updatedQualification.name, leadTexts)) {
+              console.log('[WEBHOOK] nome extraido descartado: %s nao foi dito pelo lead', updatedQualification.name)
+              updatedQualification.name = prevName
+            }
+          }
+
+          // Registra resposta da IA (guardamos o id: se o envio for interrompido pelo
+          // atendimento humano, o histórico precisa refletir só o que o lead recebeu)
+          const { data: aiRow } = await supabase.from('interactions').insert({
+            lead_id: conversation.lead_id,
+            channel: 'whatsapp',
+            direction: 'outbound',
+            content: reply,
+            ai_generated: true,
+          }).select('id').single()
+          // A partir daqui as mensagens desta rodada contam como respondidas.
+          answeredUpTo = lastUserTs
+
+          await supabase.from('ai_conversations').update({
+            qualification_data: updatedQualification,
+            updated_at: new Date().toISOString(),
+          }).eq('id', conversation.id)
+          // A próxima rodada (e a guarda de nome) partem da memória já atualizada.
+          conversation = { ...conversation, qualification_data: updatedQualification }
+
+          // Histórico completo (janela + resposta desta rodada), usado pelo resumo/orientações
+          const finalHistory: HistoryRow[] = [
+            ...freshHistory,
+            { role: 'assistant', content: reply, timestamp: new Date().toISOString() },
+          ]
+
+          // Persiste os dados qualificados direto no lead, conforme a conversa avança
+          const { score, profile } = computeLeadScore(updatedQualification)
+          const leadUpdate: Record<string, unknown> = {
+            last_interaction_at: new Date().toISOString(),
+            score,
+            profile,
+          }
+          if (updatedQualification.name) leadUpdate.name = updatedQualification.name
+          for (const key of LEAD_FIELD_KEYS) {
+            if (updatedQualification[key] !== undefined) leadUpdate[key] = updatedQualification[key]
+          }
+
+          // Envia resposta em blocos separados. O resumo (ida extra à OpenAI, não usada
+          // na resposta ao lead) fica para depois do envio, fora do ciclo medido.
+          if (round === 1) console.log(`[WEBHOOK] ciclo ate a primeira resposta: ${Date.now() - receivedAt}ms (debounce ${effectiveDebounceMs}ms) — phone: ${phone}`)
+          // Antes de cada bloco, confere se um humano assumiu (botão no CRM ou resposta
+          // pelo celular). Se sim, a IA para de falar no bloco seguinte, em vez de
+          // despejar os ~40s de resposta que já estavam na fila.
+          const { sent, total } = await sendSplitText(phone, reply, () => isAgentPaused(phone))
+          const interrupted = sent < total
+          if (interrupted && aiRow?.id) {
+            if (sent === 0) {
+              // Nada chegou ao lead: a resposta não existiu para ele, então some do histórico.
+              await supabase.from('interactions').delete().eq('id', aiRow.id)
+            } else {
+              // Chegou parte: o histórico (e a memória da IA) fica só com o que foi entregue.
+              const delivered = splitIntoBlocks(reply).slice(0, sent).join('\n')
+              await supabase.from('interactions').update({
+                content: `${delivered}\n[resposta interrompida: atendimento humano assumiu]`,
+              }).eq('id', aiRow.id)
+            }
+            console.log(`[WEBHOOK] resposta interrompida por atendimento humano (${sent}/${total} blocos) — ${phone}`)
+          }
+
+          // A cada 2 mensagens do lead, recalcula o resumo de uma linha.
+          // Conta o total de mensagens inbound do lead (não a janela de getRecentHistory,
+          // que satura e travaria a paridade sempre no mesmo valor).
+          const { count: userMessageCount } = await supabase
+            .from('interactions')
+            .select('*', { count: 'exact', head: true })
+            .eq('lead_id', conversation.lead_id)
+            .eq('channel', 'whatsapp')
+            .eq('direction', 'inbound')
+
+          let latestSummary: string | undefined
+          if (userMessageCount !== null && userMessageCount % 2 === 0) {
+            const generated = await generateLeadSummary(finalHistory, updatedQualification, personaName)
+            if (generated) {
+              latestSummary = generated
+              leadUpdate.summary = generated
+            }
+          }
+
+          await supabase.from('leads').update(leadUpdate).eq('id', conversation.lead_id)
+
+          // Se handoff: mensagem fixa de encerramento + notifica a Camila.
+          // Se um humano já assumiu no meio da resposta, nada disso faz sentido.
+          if (shouldHandoff && !interrupted) {
+            await sendText(phone, 'Obrigado pelo contato, em breve vamos falar com você')
+
+            await supabase.from('leads').update({ stage_id: 2 }).eq('id', conversation.lead_id)
+
+            const summary = latestSummary ?? (await generateLeadSummary(finalHistory, updatedQualification, personaName))
+            const guidance = await generateHandoffGuidance(finalHistory, updatedQualification, personaName)
+
+            await notifyQualifiedLead(phone, summary, guidance, personaName)
+          }
+          failures = 0
+        } catch (e) {
+          // A invocação da mensagem que chegou durante a rodada já saiu na trava:
+          // se desistirmos aqui, ninguém responde. Uma nova rodada re-busca o
+          // histórico (a mensagem continua pendente porque nada foi gravado).
+          if (++failures >= 2) throw e
+          console.error(`[WEBHOOK] rodada ${round} falhou — tentando de novo:`, e)
+          continue
+        }
+
+        // ── Drenagem: o lead escreveu enquanto respondíamos? ──
+        // A invocação dessa mensagem bateu na trava e saiu; quem responde é esta.
+        const { count: newer, error: newerErr } = await supabase
+          .from('interactions')
+          .select('*', { count: 'exact', head: true })
+          .eq('lead_id', conversation.lead_id)
+          .eq('channel', 'whatsapp')
+          .eq('direction', 'inbound')
+          .gt('created_at', answeredUpTo)
+        if (newerErr) {
+          // Não dá para saber se há pendência: mais uma rodada decide (ela mesma
+          // sai em "nenhuma mensagem pendente" se não houver nada). Soltar a trava
+          // agora deixaria órfã uma mensagem cuja invocação já saiu.
+          console.error('[WEBHOOK] falha ao checar drenagem — fazendo mais uma rodada:', newerErr.message)
+          if (++failures >= 2) break
+          continue
+        }
+        if (!newer) break
+        if (await isAgentPaused(phone)) {
+          console.log('[WEBHOOK] drenagem interrompida: IA pausada — %d mensagens ficam sem resposta da IA', newer)
+          break
+        }
       }
-    }
-
-    await supabase.from('leads').update(leadUpdate).eq('id', conversation.lead_id)
-
-    // Se handoff: mensagem fixa de encerramento + notifica a Camila.
-    // Se um humano já assumiu no meio da resposta, nada disso faz sentido.
-    if (shouldHandoff && !interrupted) {
-      await sendText(phone, 'Obrigado pelo contato, em breve vamos falar com você')
-
-      await supabase.from('leads').update({ stage_id: 2 }).eq('id', conversation.lead_id)
-
-      const summary = latestSummary ?? (await generateLeadSummary(finalHistory, updatedQualification, personaName))
-      const guidance = await generateHandoffGuidance(finalHistory, updatedQualification, personaName)
-
-      await notifyQualifiedLead(phone, summary, guidance, personaName)
+    } finally {
+      // Solta só a própria trava, de forma atômica: se a nossa expirou e outra
+      // invocação assumiu, o valor é o arrivalTs dela e não pode ser apagado por nós.
+      try {
+        await redis.eval(RELEASE_IF_OWNER, 1, lockKey, arrivalTs)
+      } catch (e) {
+        console.error('[WEBHOOK] falha ao soltar trava de resposta:', e)
+      }
     }
 
     return NextResponse.json({ ok: true })
