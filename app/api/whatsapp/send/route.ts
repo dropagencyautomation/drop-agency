@@ -4,6 +4,7 @@ import { adminClient } from '@/lib/agent/admin'
 import { sendText, sendMedia } from '@/lib/uazapi/client'
 import { upsertMessages, touchChatFromMessage } from '@/lib/inbox/store'
 import { pauseAgent } from '@/lib/inbox/agentLock'
+import { phoneVariants } from '@/lib/inbox/phoneVariants'
 import { isAllowedChat } from '@/lib/inbox/whitelist'
 import { extractSentIds } from '@/lib/inbox/sentIds'
 import type { WaMessageInput } from '@/lib/uazapi/parse'
@@ -70,6 +71,23 @@ export async function POST(req: NextRequest) {
 
   await upsertMessages(db, [input], { sent_by: auth.userId })
   await touchChatFromMessage(db, input)
+
+  // Mensagem enviada via API não volta pelo webhook do agente (a Uazapi exclui
+  // wasSentByApi), então gravamos aqui no histórico do lead — senão a IA não
+  // saberia o que a atendente disse e o CRM legado não mostraria a mensagem.
+  try {
+    const { data: lead } = await db.from('leads').select('id').in('phone_digits', phoneVariants(phone)).order('created_at', { ascending: true }).limit(1).maybeSingle()
+    if (lead?.id) {
+      await db.from('interactions').insert({
+        lead_id: lead.id, channel: 'whatsapp', direction: 'outbound',
+        content: input.text || (input.media_name ? `[arquivo] ${input.media_name}` : '[mídia]'),
+        ai_generated: false, sent_by: auth.userId,
+      })
+      await db.from('leads').update({ last_interaction_at: now }).eq('id', lead.id)
+    }
+  } catch (e) {
+    console.error('[INBOX] envio gravado no inbox mas nao no historico do lead:', e)
+  }
   const { data: message } = await db.from('wa_messages').select('*').eq('wa_message_id', input.wa_message_id).maybeSingle()
   return NextResponse.json({ message })
 }

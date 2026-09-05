@@ -27,6 +27,8 @@ export interface LossReason {
 export interface Lead {
   id: string
   name: string
+  /** Quem definiu o nome: 'crm' (humano, nunca sobrescrito), 'stated' (lead disse), 'whatsapp_profile', 'phone'. */
+  name_source?: 'crm' | 'stated' | 'whatsapp_profile' | 'phone'
   phone: string
   email: string | null
   company_name: string | null

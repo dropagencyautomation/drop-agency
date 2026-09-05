@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { WaChat, WaStatus } from '@/types/database'
 import type { WaChatInput, WaMessageInput } from '@/lib/uazapi/parse'
+import { phoneVariants } from '@/lib/inbox/phoneVariants'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = SupabaseClient<any, any, any>
@@ -19,7 +20,8 @@ export function previewFor(m: Pick<WaMessageInput, 'type' | 'text'> & { media_na
 }
 
 export async function upsertChat(db: Db, chat: WaChatInput, patch: Partial<WaChat> = {}) {
-  const { data: lead } = chat.is_group ? { data: null } : await db.from('leads').select('id').eq('phone', chat.phone).maybeSingle()
+  const { data: leads } = chat.is_group ? { data: null } : await db.from('leads').select('id').in('phone_digits', phoneVariants(chat.phone)).order('created_at', { ascending: true }).limit(1)
+  const lead = leads?.[0] ?? null
   const row = { ...chat, ...patch, lead_id: patch.lead_id ?? lead?.id ?? null, updated_at: new Date().toISOString() }
   const { error } = await db.from('wa_chats').upsert(row, { onConflict: 'id' })
   if (error) console.error('[INBOX] upsertChat', chat.id, error.message)

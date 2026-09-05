@@ -625,8 +625,12 @@ export default function DropCRM() {
 
   async function createLead() {
     if(!newLead.name.trim()||!newLead.phone.trim()) return
+    // Telefone só com dígitos (com 55): é assim que o WhatsApp entrega e como o
+    // webhook procura antes de criar outro lead. Nome digitado aqui é 'crm' e a IA não sobrescreve.
+    const digits=newLead.phone.replace(/\D/g,'')
+    const phone=/^\d{2}9\d{8}$/.test(digits)||/^\d{2}[2-5]\d{7}$/.test(digits)?`55${digits}`:digits
     const { data } = await sb.from('leads').insert({
-      ...newLead, score:0, stage_id:1, is_active:true,
+      ...newLead, phone, name_source:'crm', score:0, stage_id:1, is_active:true,
       email:newLead.email||null, company_name:newLead.company_name||null,
       niche:newLead.niche||null, desired_service:newLead.desired_service||null,
       estimated_budget:newLead.estimated_budget||null,
@@ -668,21 +672,47 @@ export default function DropCRM() {
     setFuNote('')
   }
 
+  // Este painel só gravava no banco: a mensagem nunca chegava ao WhatsApp e o
+  // "Pausar IA" mudava uma flag que nada lia. Agora passa pelas mesmas rotas do inbox.
+  const chatIdOf=(phone:string)=>`${phone.replace(/@.*$/,'').split(':')[0]}@s.whatsapp.net`
+
   async function sendMessage() {
     if(!replyText.trim()||!chatLead||sending) return
-    const text=replyText.trim(); setReplyText(''); setSending(true)
+    const text=replyText.trim(); setSending(true)
     try {
-      await sb.from('interactions').insert({lead_id:chatLead.id,channel:'whatsapp',direction:'outbound',content:text,ai_generated:false})
-      await sb.from('leads').update({last_interaction_at:new Date().toISOString()}).eq('id',chatLead.id)
+      const conv=aiConvs.find(c=>c.lead_id===chatLead.id)
+      const res=await fetch('/api/whatsapp/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chatId:chatIdOf(conv?.whatsapp_number||chatLead.phone),text})})
+      if(!res.ok){ const j=await res.json().catch(()=>({})); alert(j.error||'Falha ao enviar pelo WhatsApp'); return }
+      setReplyText('')
+      // Enviar pelo CRM pausa a IA neste chat (a rota já grava a pausa); reflete aqui.
+      if(conv) setAiConvs(prev=>prev.map(c=>c.id===conv.id?{...c,human_takeover:true}:c))
       await fetchAll()
-    } finally { setSending(false) }
+    } catch { alert('Falha de rede ao enviar') }
+    finally { setSending(false) }
   }
 
   async function toggleHumanTakeover(conv:AiConv) {
     const v=!conv.human_takeover
-    await sb.from('ai_conversations').update({human_takeover:v}).eq('id',conv.id)
-    setAiConvs(prev=>prev.map(c=>c.id===conv.id?{...c,human_takeover:v}:c))
+    try {
+      const res=await fetch(`/api/whatsapp/chats/${encodeURIComponent(chatIdOf(conv.whatsapp_number))}/agent`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paused:v})})
+      const j=await res.json().catch(()=>({}))
+      if(!res.ok){ alert(j.error||'Falha ao alterar a pausa da IA'); return }
+      const paused=Boolean(j.paused)
+      await sb.from('ai_conversations').update({human_takeover:paused}).eq('id',conv.id)
+      setAiConvs(prev=>prev.map(c=>c.id===conv.id?{...c,human_takeover:paused}:c))
+    } catch { alert('Falha de rede ao alterar a pausa da IA') }
   }
+
+  // Ao abrir um chat, o estado real da pausa vem do Redis (fonte de verdade), não da flag do banco.
+  useEffect(()=>{
+    if(!chatLead) return
+    const conv=aiConvs.find(c=>c.lead_id===chatLead.id); if(!conv) return
+    fetch(`/api/whatsapp/chats/${encodeURIComponent(chatIdOf(conv.whatsapp_number))}/agent`)
+      .then(r=>r.ok?r.json():null)
+      .then(j=>{ if(j&&typeof j.paused==='boolean') setAiConvs(prev=>prev.map(c=>c.id===conv.id?{...c,human_takeover:j.paused}:c)) })
+      .catch(()=>{})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[chatLead?.id])
 
   // ── Notificações ────────────────────────────────────────
   async function sendNotif(title:string, message:string, type:string, resource?:string, resourceId?:string) {

@@ -14,6 +14,7 @@ import { latestMsgKey, processingKey, seenMessageKey } from '@/lib/agent/keys'
 import { parseMessage } from '@/lib/uazapi/parse'
 import { leadSaidName } from '@/lib/agent/nameGuard'
 import { sanitizeReply } from '@/lib/agent/reply'
+import { phoneVariants } from '@/lib/inbox/phoneVariants'
 import type { AiConversation, QualificationData } from '@/types/database'
 
 const LEAD_FIELD_KEYS: Array<keyof QualificationData> = [
@@ -171,19 +172,30 @@ export async function POST(req: NextRequest) {
       // Novo lead. Duas mensagens em rajada no primeiro contato chegam aqui ao
       // mesmo tempo: a segunda perde no UNIQUE(phone) e precisa REAPROVEITAR o
       // lead/conversa que a primeira criou, nunca desistir da mensagem.
-      const senderName = !isFromMe && typeof msg.senderName === 'string' ? msg.senderName.trim() : ''
-      const { data: newLead, error: leadErr } = await supabase
-        .from('leads')
-        .insert({ name: senderName || phone, phone, source: 'whatsapp', stage_id: 1 })
-        .select('id')
-        .single()
+      // Lead cadastrado no CRM (ou por outra origem) com este telefone em QUALQUER
+      // formato: reaproveita em vez de abrir um segundo lead. Nome do CRM fica.
+      const { data: known } = await supabase
+        .from('leads').select('id').in('phone_digits', phoneVariants(phone))
+        .order('created_at', { ascending: true }).limit(1)
+      let leadId: string | undefined = known?.[0]?.id
+      if (leadId) console.log('[WEBHOOK] lead existente reaproveitado para %s', phone)
 
-      let leadId: string | undefined = newLead?.id
       if (!leadId) {
-        const { data: existing } = await supabase.from('leads').select('id').eq('phone', phone).maybeSingle()
-        leadId = existing?.id
-        if (!leadId) throw new Error(`falha ao criar lead ${phone}: ${leadErr?.message ?? 'sem id'}`)
-        console.log('[WEBHOOK] lead ja existia para %s — reaproveitado', phone)
+        // Nome inicial = nome do contato no WhatsApp (só para o CRM; a IA sempre
+        // pergunta o nome e só aprende o que o lead disser).
+        const senderName = !isFromMe && typeof msg.senderName === 'string' ? msg.senderName.trim() : ''
+        const { data: newLead, error: leadErr } = await supabase
+          .from('leads')
+          .insert({ name: senderName || phone, phone, source: 'whatsapp', stage_id: 1, name_source: senderName ? 'whatsapp_profile' : 'phone' })
+          .select('id')
+          .single()
+        leadId = newLead?.id
+        if (!leadId) {
+          const { data: existing } = await supabase.from('leads').select('id').eq('phone', phone).maybeSingle()
+          leadId = existing?.id
+          if (!leadId) throw new Error(`falha ao criar lead ${phone}: ${leadErr?.message ?? 'sem id'}`)
+          console.log('[WEBHOOK] lead ja existia para %s — reaproveitado', phone)
+        }
       }
 
       const { data: newConv } = await supabase
@@ -363,6 +375,13 @@ export async function POST(req: NextRequest) {
       console.error('[WEBHOOK] trava de resposta indisponivel — seguindo sem ela:', e)
     }
 
+    // Nome digitado no CRM nunca é sobrescrito pela IA; os demais podem virar 'stated'.
+    let leadNameSource = 'phone'
+    try {
+      const { data: leadRow } = await supabase.from('leads').select('name_source').eq('id', conversation.lead_id).maybeSingle()
+      leadNameSource = (leadRow?.name_source as string | undefined) ?? 'phone'
+    } catch { /* sem a coluna (migration pendente) segue o comportamento antigo */ }
+
     try {
       // Sem teto de rodadas: quem bateu na trava já saiu, então tudo que chegar
       // enquanto respondemos só será respondido por esta invocação.
@@ -473,7 +492,11 @@ export async function POST(req: NextRequest) {
             score,
             profile,
           }
-          if (updatedQualification.name) leadUpdate.name = updatedQualification.name
+          if (updatedQualification.name && leadNameSource !== 'crm') {
+            leadUpdate.name = updatedQualification.name
+            leadUpdate.name_source = 'stated'
+            leadNameSource = 'stated'
+          }
           for (const key of LEAD_FIELD_KEYS) {
             if (updatedQualification[key] !== undefined) leadUpdate[key] = updatedQualification[key]
           }
