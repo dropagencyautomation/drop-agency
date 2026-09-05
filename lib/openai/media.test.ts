@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
+// As fixtures usam fileURL em https://uaz/...; só é aceita se for o host da Uazapi.
+process.env.UAZAPI_BASE_URL = 'https://uaz'
 import { resolveMediaText, AUDIO_TEXT_PREFIX, IMAGE_TEXT_PREFIX, type MediaDeps } from './media'
 
 const base = { id: '5511:AB1', messageid: 'AB1', chatid: '554187490574@s.whatsapp.net', fromMe: false, messageTimestamp: 1787928964000 }
@@ -76,5 +78,40 @@ describe('resolveMediaText', () => {
     const d = fakes()
     expect(await resolveMediaText({ ...base, messageType: 'ExtendedTextMessage', text: '' }, d)).toBeNull()
     expect(d.describe).not.toHaveBeenCalled()
+  })
+})
+
+describe('isTrustedMediaUrl / audioFileName', () => {
+  it('aceita só https no host da Uazapi', async () => {
+    const { isTrustedMediaUrl } = await import('./media')
+    const base = 'https://dropagency.uazapi.com'
+    expect(isTrustedMediaUrl('https://dropagency.uazapi.com/files/a.jpg', base)).toBe(true)
+    expect(isTrustedMediaUrl('http://dropagency.uazapi.com/files/a.jpg', base)).toBe(false)
+    expect(isTrustedMediaUrl('https://10.0.0.5/admin', base)).toBe(false)
+    expect(isTrustedMediaUrl('https://evil.com/files/a.jpg', base)).toBe(false)
+    expect(isTrustedMediaUrl('not a url', base)).toBe(false)
+  })
+  it('extensão do áudio segue o mime', async () => {
+    const { audioFileName } = await import('./media')
+    expect(audioFileName('audio/ogg; codecs=opus')).toBe('audio.ogg')
+    expect(audioFileName('audio/mp4')).toBe('audio.m4a')
+    expect(audioFileName('audio/mpeg')).toBe('audio.mp3')
+    expect(audioFileName('audio/webm')).toBe('audio.webm')
+    expect(audioFileName(null)).toBe('audio.ogg')
+  })
+})
+
+describe('fileURL fora do host da Uazapi', () => {
+  it('ignora a URL do payload e cai no downloadMedia oficial', async () => {
+    const d = {
+      downloadMedia: vi.fn(async () => ({ fileURL: 'https://uaz/files/ok.jpg', mimetype: 'image/jpeg' })),
+      transcribe: vi.fn(async () => ''),
+      describe: vi.fn(async () => 'Descricao segura.'),
+      fetch: vi.fn() as unknown as typeof fetch,
+    } satisfies MediaDeps
+    const raw = { id: '5511:IMG9', messageid: 'IMG9', chatid: '5511@s.whatsapp.net', fromMe: false, messageType: 'ImageMessage', text: '', fileURL: 'https://10.0.0.5/internal', content: { mimetype: 'image/jpeg' }, messageTimestamp: 1, senderName: 'x', status: '' }
+    await resolveMediaText(raw, d)
+    expect(d.downloadMedia).toHaveBeenCalledWith('5511:IMG9', expect.any(Number))
+    expect(d.describe).toHaveBeenCalledWith('https://uaz/files/ok.jpg', expect.any(Number))
   })
 })

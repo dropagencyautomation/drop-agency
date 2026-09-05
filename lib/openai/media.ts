@@ -68,10 +68,34 @@ const defaultDeps: MediaDeps = {
   fetch: (...args) => globalThis.fetch(...args),
 }
 
+// O webhook do agente não tem segredo: uma fileURL forjada no payload faria a
+// VPS buscar qualquer endereço (inclusive rede interna). Só aceitamos URL do
+// próprio host da Uazapi; qualquer outra coisa passa pelo downloadMedia oficial.
+export function isTrustedMediaUrl(url: string, base = process.env.UAZAPI_BASE_URL ?? ''): boolean {
+  try {
+    const u = new URL(url)
+    const b = new URL(base)
+    return u.protocol === 'https:' && u.host === b.host
+  } catch {
+    return false
+  }
+}
+
 async function mediaUrl(m: WaMessageInput, deps: MediaDeps, deadline: number): Promise<string | null> {
-  if (m.media_url) return m.media_url
+  if (m.media_url && isTrustedMediaUrl(m.media_url)) return m.media_url
+  if (m.media_url) console.warn('[WEBHOOK] fileURL fora do host da Uazapi ignorada:', m.media_url.slice(0, 80))
   if (!m.wa_full_id) return null
   return (await deps.downloadMedia(m.wa_full_id, remaining(deadline)))?.fileURL ?? null
+}
+
+// Whisper decide o decoder pela extensão: 'audio.ogg' para um mp4/webm dá erro de formato.
+export function audioFileName(mime: string | null | undefined): string {
+  const m = (mime ?? '').toLowerCase()
+  if (m.includes('mp4') || m.includes('m4a') || m.includes('aac')) return 'audio.m4a'
+  if (m.includes('mpeg') || m.includes('mp3')) return 'audio.mp3'
+  if (m.includes('webm')) return 'audio.webm'
+  if (m.includes('wav')) return 'audio.wav'
+  return 'audio.ogg'
 }
 
 /**
@@ -117,7 +141,7 @@ export async function resolveMediaText(
       const res = await d.fetch(url, { signal: AbortSignal.timeout(remaining(deadline)) })
       if (!res.ok) throw new Error(`download do audio retornou ${res.status}`)
       const blob = await res.blob()
-      const file = new File([blob], 'audio.ogg', { type: m.media_mime || blob.type || 'audio/ogg' })
+      const file = new File([blob], audioFileName(m.media_mime || blob.type), { type: m.media_mime || blob.type || 'audio/ogg' })
       text = (await d.transcribe(file, deadline)).trim()
     } else {
       text = (await d.describe(url, deadline)).trim()

@@ -18,3 +18,6 @@ export const latestMsgKey = (phone: string) => key('latest_msg', phone)
 
 /** Trava de resposta: só uma invocação por vez decide e envia para este telefone. */
 export const processingKey = (phone: string) => key('processing', phone)
+
+/** Dedupe de eventos: a Uazapi reentrega o mesmo messageid quando o webhook demora. */
+export const seenMessageKey = (messageId: string) => `seen:${messageId}`

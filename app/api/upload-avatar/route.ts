@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireUser } from '@/lib/inbox/auth'
+import { requireAdmin } from '@/lib/agent/admin'
 
 // Cliente admin puro — sem cookie/session, usa service role que bypassa RLS
 function adminClient() {
@@ -11,6 +13,8 @@ function adminClient() {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await requireUser()
+  if (!session.ok) return session.res
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File | null
@@ -19,6 +23,13 @@ export async function POST(req: NextRequest) {
     if (!file || !userId) {
       return NextResponse.json({ error: 'file e userId são obrigatórios' }, { status: 400 })
     }
+    // Só o próprio usuário troca o avatar dele (a rota era pública e aceitava qualquer userId).
+    if (userId !== session.userId) {
+      const caller = await requireAdmin()
+      if (!caller.ok) return NextResponse.json({ error: 'Sem permissão para alterar este avatar' }, { status: 403 })
+    }
+    if (!file.type.startsWith('image/')) return NextResponse.json({ error: 'Apenas imagens' }, { status: 400 })
+    if (file.size > 5 * 1024 * 1024) return NextResponse.json({ error: 'Máximo 5MB' }, { status: 400 })
 
     const supabase = adminClient()
 

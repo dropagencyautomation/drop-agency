@@ -5,10 +5,13 @@ const BASE_URL = process.env.UAZAPI_BASE_URL!
 const TOKEN = process.env.UAZAPI_TOKEN!
 const INSTANCE = process.env.UAZAPI_INSTANCE!
 
-async function request(path: string, body?: object, timeoutMs?: number) {
+// Teto padrão por chamada: sem ele uma Uazapi pendurada segurava o webhook indefinidamente.
+const DEFAULT_TIMEOUT_MS = 20000
+
+async function request(path: string, body?: object, timeoutMs: number = DEFAULT_TIMEOUT_MS) {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
-    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -30,7 +33,13 @@ export async function sendText(phone: string, text: string) {
   // TTL curto, renovado a cada chamada — cobre qualquer envio (blocos
   // múltiplos, mensagens fixas, notificações), sem precisar prever a
   // duração total antecipadamente.
-  await getRedis().set(botSendingKey(phone), '1', 'EX', 15)
+  // Guardamos o TEXTO enviado (conjunto com TTL): o webhook reconhece o eco
+  // comparando o conteúdo, e não engole mais a atendente que digita durante o envio.
+  try {
+    await getRedis().multi().sadd(botSendingKey(phone), text).expire(botSendingKey(phone), 90).exec()
+  } catch (e) {
+    console.error('[UAZAPI] bot:sending falhou', phone, e)
+  }
 
   return request('/send/text', {
     number: phone,
@@ -109,23 +118,30 @@ export async function sendSplitText(
   phone: string,
   text: string,
   shouldStop?: () => Promise<boolean>
-): Promise<{ sent: number; total: number }> {
+): Promise<{ sent: number; total: number; failed: boolean }> {
   const blocks = splitIntoBlocks(text)
-  if (blocks.length === 0) return { sent: 0, total: 0 }
+  if (blocks.length === 0) return { sent: 0, total: 0, failed: false }
 
   for (let i = 0; i < blocks.length; i++) {
     if (shouldStop && (await shouldStop())) {
       console.log(`[UAZAPI] envio interrompido antes do bloco ${i + 1}/${blocks.length} — ${phone}`)
-      return { sent: i, total: blocks.length }
+      return { sent: i, total: blocks.length, failed: false }
     }
-    await sendText(phone, blocks[i])
+    try {
+      await sendText(phone, blocks[i])
+    } catch (e) {
+      // Uazapi 5xx/timeout no meio: devolvemos o que chegou em vez de lançar,
+      // para o histórico refletir só o que o lead recebeu de fato.
+      console.error(`[UAZAPI] envio falhou no bloco ${i + 1}/${blocks.length} — ${phone}:`, e instanceof Error ? e.message : e)
+      return { sent: i, total: blocks.length, failed: true }
+    }
 
     // Entre um bloco e o próximo, espera aleatória de 2 a 3 segundos.
     if (i < blocks.length - 1) {
       await sleep(getRandomBlockDelay())
     }
   }
-  return { sent: blocks.length, total: blocks.length }
+  return { sent: blocks.length, total: blocks.length, failed: false }
 }
 
 export async function findChats(offset = 0, limit = 100) {
@@ -150,7 +166,9 @@ export async function sendMedia(number: string, type: 'image' | 'video' | 'audio
   // Mesmo marcador do sendText: sem ele o webhook da Carol lê o eco do próprio
   // envio como mensagem humana e sobrescreve o human_lock de 30 dias por 15 min.
   // ponytail: Redis fora do ar não pode travar o envio — logamos e seguimos.
-  try { await getRedis().set(botSendingKey(number), '1', 'EX', 15) } catch (e) { console.error('[UAZAPI] bot:sending falhou', number, e) }
+  try {
+    await getRedis().multi().sadd(botSendingKey(number), caption?.trim() || '[media]').expire(botSendingKey(number), 90).exec()
+  } catch (e) { console.error('[UAZAPI] bot:sending falhou', number, e) }
 
   return request('/send/media', { number, type, file, text: caption ?? '', docName, ...opts })
 }
